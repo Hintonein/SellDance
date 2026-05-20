@@ -1,0 +1,186 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f8fafc;
+}
+
+.layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+}
+
+aside {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1.5rem;
+}
+
+aside h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+aside p {
+  margin: 0.5rem 0 1rem;
+  color: #94a3b8;
+}
+
+nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+nav button {
+  text-align: left;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+nav button.active {
+  border-color: #38bdf8;
+}
+
+.project-chip,
+.message {
+  margin-top: 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+  font-size: 0.9rem;
+}
+
+main {
+  padding: 1.5rem;
+}
+
+.page-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.page-shell h2 {
+  margin: 0;
+}
+
+.page-shell p {
+  margin: 0.3rem 0 0;
+  color: #475569;
+}
+
+.card {
+  background: white;
+  border: 1px solid #dbeafe;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+}
+
+button {
+  border: 1px solid #0ea5e9;
+  background: #0ea5e9;
+  color: white;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.list-item {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  display: flex;
+  justify-content: space-between;
+}
+
+.list-item.active {
+  border-color: #0ea5e9;
+}
+
+.scene-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  padding: 0.5rem;
+}
+
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
