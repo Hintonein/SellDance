@@ -1,0 +1,29 @@
+{
+  "name": "selldance",
+  "version": "1.0.0",
+  "description": "An end-to-end AI system for e-commerce video generation, supporting asset management, script generation, storyboard editing, voiceover, subtitles, and automated short-video production.",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test --prefix backend",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hintonein/SellDance.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Hintonein/SellDance/issues"
+  },
+  "homepage": "https://github.com/Hintonein/SellDance#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

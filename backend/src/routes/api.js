@@ -1,0 +1,111 @@
+const express = require('express');
+const multer = require('multer');
+const { UPLOADS_DIR } = require('../config/paths');
+const { listProjects, createProject, getProject } = require('../services/project.service');
+const { listMaterials, saveMaterial } = require('../services/material.service');
+const { getScript, saveScript, generateAndSaveScript } = require('../services/script.service');
+const { getStoryboard, saveStoryboard, generateAndSaveStoryboard } = require('../services/storyboard.service');
+const { createTask, getTask, listTasks, retryTask } = require('../services/video-task.service');
+
+const upload = multer({ dest: UPLOADS_DIR });
+const router = express.Router();
+
+router.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'selldance-api' });
+});
+
+router.get('/projects', async (_req, res) => {
+  res.json(await listProjects());
+});
+
+router.post('/projects', async (req, res) => {
+  if (!req.body.name) {
+    return res.status(400).json({ message: 'Project name is required.' });
+  }
+  const project = await createProject(req.body);
+  return res.status(201).json(project);
+});
+
+router.get('/projects/:projectId', async (req, res) => {
+  const project = await getProject(req.params.projectId);
+  if (!project) {
+    return res.status(404).json({ message: 'Project not found.' });
+  }
+  return res.json(project);
+});
+
+router.get('/projects/:projectId/materials', async (req, res) => {
+  res.json(await listMaterials(req.params.projectId));
+});
+
+router.post('/projects/:projectId/materials', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Please upload a file.' });
+  }
+  const record = await saveMaterial(req.params.projectId, req.file, req.body.type);
+  return res.status(201).json(record);
+});
+
+router.get('/projects/:projectId/script', async (req, res) => {
+  res.json((await getScript(req.params.projectId)) || {});
+});
+
+router.post('/projects/:projectId/script/generate', async (req, res) => {
+  const script = await generateAndSaveScript(req.params.projectId, req.body || {});
+  res.status(201).json(script);
+});
+
+router.put('/projects/:projectId/script', async (req, res) => {
+  if (!req.body.scriptText) {
+    return res.status(400).json({ message: 'scriptText is required.' });
+  }
+  const script = await saveScript(req.params.projectId, req.body.scriptText, { source: 'manual' });
+  res.json(script);
+});
+
+router.get('/projects/:projectId/storyboard', async (req, res) => {
+  res.json((await getStoryboard(req.params.projectId)) || { scenes: [] });
+});
+
+router.post('/projects/:projectId/storyboard/generate', async (req, res) => {
+  if (!req.body.scriptText) {
+    return res.status(400).json({ message: 'scriptText is required.' });
+  }
+  const storyboard = await generateAndSaveStoryboard(req.params.projectId, req.body.scriptText);
+  res.status(201).json(storyboard);
+});
+
+router.put('/projects/:projectId/storyboard', async (req, res) => {
+  if (!Array.isArray(req.body.scenes)) {
+    return res.status(400).json({ message: 'scenes must be an array.' });
+  }
+  const storyboard = await saveStoryboard(req.params.projectId, req.body.scenes, 'manual');
+  res.json(storyboard);
+});
+
+router.get('/projects/:projectId/video-tasks', async (req, res) => {
+  res.json(await listTasks(req.params.projectId));
+});
+
+router.post('/projects/:projectId/video-tasks', async (req, res) => {
+  const task = await createTask(req.params.projectId, req.body || {});
+  res.status(201).json(task);
+});
+
+router.get('/video-tasks/:taskId', async (req, res) => {
+  const task = await getTask(req.params.taskId);
+  if (!task) {
+    return res.status(404).json({ message: 'Task not found.' });
+  }
+  res.json(task);
+});
+
+router.post('/video-tasks/:taskId/retry', async (req, res) => {
+  const task = await retryTask(req.params.taskId);
+  if (!task) {
+    return res.status(404).json({ message: 'Task not found.' });
+  }
+  res.json(task);
+});
+
+module.exports = router;
