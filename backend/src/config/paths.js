@@ -12,4 +12,5 @@ module.exports = {
   STORYBOARDS_DIR: path.join(DATA_DIR, 'storyboards'),
   TASKS_DIR: path.join(DATA_DIR, 'generation-tasks'),
   UPLOADS_DIR: path.join(ROOT_DIR, 'uploads'),
+  OUTPUTS_DIR: path.join(ROOT_DIR, 'outputs'),
 };

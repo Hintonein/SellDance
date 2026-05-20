@@ -1,16 +1,22 @@
 const { buildStoryboard } = require('./storyboard-matcher.service');
 const { listMaterials } = require('./material.service');
 const { readStoryboard, writeStoryboard } = require('./storage.service');
+const { normalizeScenes } = require('./storyboard-scene.service');
 
 async function getStoryboard(projectId) {
-  return readStoryboard(projectId);
+  const storyboard = await readStoryboard(projectId);
+  if (!storyboard) return null;
+  return {
+    ...storyboard,
+    scenes: normalizeScenes(storyboard.scenes || []),
+  };
 }
 
 async function saveStoryboard(projectId, scenes, source = 'manual') {
   const payload = {
     projectId,
     source,
-    scenes,
+    scenes: normalizeScenes(scenes),
     updatedAt: new Date().toISOString(),
   };
   await writeStoryboard(projectId, payload);

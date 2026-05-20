@@ -1,10 +1,22 @@
 import PageShell from '../components/PageShell';
 
-export default function StoryboardPage({ disabled, scriptText, scenes, onGenerate, onSceneUpdate, onSave }) {
+function selectedOptionsToIds(event) {
+  return Array.from(event.target.selectedOptions).map((option) => option.value);
+}
+
+export default function StoryboardPage({
+  disabled,
+  scriptText,
+  scenes,
+  materials,
+  onGenerate,
+  onSceneUpdate,
+  onSave,
+}) {
   return (
     <PageShell
       title="Storyboard editing"
-      description="Split script into scenes and pair each scene with product materials for preview."
+      description="Edit scene duration/subtitles and manually assign uploaded assets to each scene."
     >
       <div className="card button-row">
         <button type="button" disabled={disabled || !scriptText.trim()} onClick={() => onGenerate(scriptText)}>
@@ -17,32 +29,82 @@ export default function StoryboardPage({ disabled, scriptText, scenes, onGenerat
 
       <div className="scene-grid">
         {scenes.map((scene, index) => (
-          <article key={scene.sceneNumber || index} className="card form">
-            <h3>Scene {scene.sceneNumber || index + 1}</h3>
+          <article key={scene.sceneOrder || index} className="card form">
+            <h3>Scene {scene.sceneOrder || index + 1}</h3>
             <label>
-              Narration
+              Order
+              <input
+                type="number"
+                min="1"
+                value={scene.sceneOrder || index + 1}
+                onChange={(event) => onSceneUpdate(index, 'sceneOrder', Number(event.target.value) || index + 1)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Duration (seconds)
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                value={scene.durationSeconds || 3}
+                onChange={(event) => onSceneUpdate(index, 'durationSeconds', Number(event.target.value) || 3)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Script text
               <textarea
                 rows={3}
-                value={scene.narration || ''}
-                onChange={(event) => onSceneUpdate(index, 'narration', event.target.value)}
+                value={scene.scriptText || ''}
+                onChange={(event) => onSceneUpdate(index, 'scriptText', event.target.value)}
                 disabled={disabled}
               />
             </label>
             <label>
-              Subtitle
+              Subtitle text
               <input
-                value={scene.subtitle || ''}
-                onChange={(event) => onSceneUpdate(index, 'subtitle', event.target.value)}
+                value={scene.subtitleText || ''}
+                onChange={(event) => onSceneUpdate(index, 'subtitleText', event.target.value)}
                 disabled={disabled}
               />
             </label>
             <label>
-              Matched asset
-              <input
-                value={scene.selectedAssetName || ''}
-                onChange={(event) => onSceneUpdate(index, 'selectedAssetName', event.target.value)}
+              Layout
+              <select
+                value={scene.layout || 'cover'}
+                onChange={(event) => onSceneUpdate(index, 'layout', event.target.value)}
                 disabled={disabled}
-              />
+              >
+                <option value="cover">Cover</option>
+                <option value="contain">Contain</option>
+              </select>
+            </label>
+            <label>
+              Transition
+              <select
+                value={scene.transition || 'cut'}
+                onChange={(event) => onSceneUpdate(index, 'transition', event.target.value)}
+                disabled={disabled}
+              >
+                <option value="cut">Cut</option>
+                <option value="fade">Fade</option>
+              </select>
+            </label>
+            <label>
+              Assigned assets (manual)
+              <select
+                multiple
+                value={scene.selectedAssetIds || []}
+                onChange={(event) => onSceneUpdate(index, 'selectedAssetIds', selectedOptionsToIds(event))}
+                disabled={disabled}
+              >
+                {materials.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.originalName} ({asset.type})
+                  </option>
+                ))}
+              </select>
             </label>
           </article>
         ))}

@@ -1,6 +1,6 @@
 import PageShell from '../components/PageShell';
 
-export default function HistoryPage({ tasks, onRetry, disabled }) {
+export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl }) {
   return (
     <PageShell
       title="Generation history"
@@ -25,7 +25,15 @@ export default function HistoryPage({ tasks, onRetry, disabled }) {
                 <td>{task.status}</td>
                 <td>{task.progress}%</td>
                 <td>{task.errorMessage || '-'}</td>
-                <td>{task.exportFile || '-'}</td>
+                <td>
+                  {task.videoUrl ? (
+                    <a href={resolveMediaUrl(task.videoUrl)} target="_blank" rel="noreferrer">
+                      MP4
+                    </a>
+                  ) : (
+                    task.exportFile || '-'
+                  )}
+                </td>
                 <td>
                   {task.status === 'failed' ? (
                     <button type="button" onClick={() => onRetry(task.id)} disabled={disabled}>

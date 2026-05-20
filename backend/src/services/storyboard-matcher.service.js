@@ -11,14 +11,16 @@ function buildStoryboard(scriptText, materials = []) {
   return sentences.map((line, index) => {
     const material = materials[index % (materials.length || 1)] || null;
     return {
-      sceneNumber: index + 1,
-      narration: line,
-      subtitle: line,
+      sceneOrder: index + 1,
+      scriptText: line,
+      subtitleText: line,
       voiceoverPlaceholder: `voiceover_scene_${index + 1}.wav`,
       backgroundMusicPlaceholder: 'bgm_track_placeholder.mp3',
-      selectedAssetId: material ? material.id : null,
+      selectedAssetIds: material ? [material.id] : [],
       selectedAssetName: material ? material.originalName : 'No asset matched',
       durationSeconds: 3,
+      layout: 'cover',
+      transition: 'cut',
     };
   });
 }

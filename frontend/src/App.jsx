@@ -8,6 +8,14 @@ import StoryboardPage from './pages/StoryboardPage';
 import VideoWorkflowPage from './pages/VideoWorkflowPage';
 import HistoryPage from './pages/HistoryPage';
 
+function resolveMediaUrl(path) {
+  if (!path) return '';
+  if (/^https?:\/\//.test(path)) return path;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+  const origin = new URL(apiBase).origin;
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 const pages = [
   { key: 'projects', label: 'Project' },
   { key: 'materials', label: 'Materials' },
@@ -166,6 +174,7 @@ function App() {
             disabled={disabled}
             scriptText={scriptText}
             scenes={scenes}
+            materials={materials}
             onGenerate={(text) =>
               withToast(async () => {
                 const generated = await api.generateStoryboard(selectedProjectId, text);
@@ -191,7 +200,9 @@ function App() {
           <VideoWorkflowPage
             disabled={disabled}
             scenes={scenes}
+            materials={materials}
             latestTask={tasks[0]}
+            resolveMediaUrl={resolveMediaUrl}
             onCreateTask={(payload) =>
               withToast(async () => {
                 await api.createTask(selectedProjectId, payload);
@@ -205,6 +216,7 @@ function App() {
           <HistoryPage
             disabled={disabled}
             tasks={tasks}
+            resolveMediaUrl={resolveMediaUrl}
             onRetry={(taskId) =>
               withToast(async () => {
                 await api.retryTask(taskId);
