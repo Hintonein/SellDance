@@ -1,14 +1,8 @@
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { ASSETS_DIR } = require('../config/paths');
-const { readJson, writeJson } = require('./storage.service');
-
-function assetsFilePath(projectId) {
-  return path.join(ASSETS_DIR, `${projectId}.json`);
-}
+const { readAssets, writeAssets } = require('./storage.service');
 
 async function listMaterials(projectId) {
-  return (await readJson(assetsFilePath(projectId), [])) || [];
+  return (await readAssets(projectId, [])) || [];
 }
 
 async function saveMaterial(projectId, file, type) {
@@ -24,7 +18,7 @@ async function saveMaterial(projectId, file, type) {
     uploadedAt: new Date().toISOString(),
   };
   const next = [asset, ...existing];
-  await writeJson(assetsFilePath(projectId), next);
+  await writeAssets(projectId, next);
   return asset;
 }
 

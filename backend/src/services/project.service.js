@@ -1,14 +1,8 @@
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { PROJECTS_DIR } = require('../config/paths');
-const { readJsonFiles, readJson, writeJson } = require('./storage.service');
-
-function projectFilePath(projectId) {
-  return path.join(PROJECTS_DIR, `${projectId}.json`);
-}
+const { listProjects: listProjectRecords, readProject, writeProject } = require('./storage.service');
 
 async function listProjects() {
-  const projects = await readJsonFiles(PROJECTS_DIR);
+  const projects = await listProjectRecords();
   return projects.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -22,12 +16,12 @@ async function createProject(payload) {
     createdAt: now,
     updatedAt: now,
   };
-  await writeJson(projectFilePath(project.id), project);
+  await writeProject(project.id, project);
   return project;
 }
 
 async function getProject(projectId) {
-  return readJson(projectFilePath(projectId));
+  return readProject(projectId);
 }
 
 module.exports = {

@@ -1,27 +1,21 @@
-const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { TASKS_DIR } = require('../config/paths');
-const { readJson, readJsonFiles, writeJson } = require('./storage.service');
+const { readTask, listTasks: listTaskRecords, writeTask } = require('./storage.service');
 
 const runningJobs = new Map();
 
-function taskFilePath(taskId) {
-  return path.join(TASKS_DIR, `${taskId}.json`);
-}
-
 async function getTask(taskId) {
-  return readJson(taskFilePath(taskId));
+  return readTask(taskId);
 }
 
 async function listTasks(projectId) {
-  const tasks = await readJsonFiles(TASKS_DIR);
+  const tasks = await listTaskRecords();
   return tasks
     .filter((task) => task.projectId === projectId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 async function persistTask(task) {
-  await writeJson(taskFilePath(task.id), task);
+  await writeTask(task.id, task);
   return task;
 }
 

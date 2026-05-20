@@ -1,14 +1,8 @@
-const path = require('path');
-const { SCRIPTS_DIR } = require('../config/paths');
 const { generateScript } = require('./ai-script.service');
-const { readJson, writeJson } = require('./storage.service');
-
-function scriptFilePath(projectId) {
-  return path.join(SCRIPTS_DIR, `${projectId}.json`);
-}
+const { readScript, writeScript } = require('./storage.service');
 
 async function getScript(projectId) {
-  return readJson(scriptFilePath(projectId));
+  return readScript(projectId);
 }
 
 async function saveScript(projectId, scriptText, meta = {}) {
@@ -18,7 +12,7 @@ async function saveScript(projectId, scriptText, meta = {}) {
     ...meta,
     updatedAt: new Date().toISOString(),
   };
-  await writeJson(scriptFilePath(projectId), payload);
+  await writeScript(projectId, payload);
   return payload;
 }
 

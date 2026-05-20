@@ -1,15 +1,9 @@
-const path = require('path');
-const { STORYBOARDS_DIR } = require('../config/paths');
 const { buildStoryboard } = require('./storyboard-matcher.service');
 const { listMaterials } = require('./material.service');
-const { readJson, writeJson } = require('./storage.service');
-
-function storyboardFilePath(projectId) {
-  return path.join(STORYBOARDS_DIR, `${projectId}.json`);
-}
+const { readStoryboard, writeStoryboard } = require('./storage.service');
 
 async function getStoryboard(projectId) {
-  return readJson(storyboardFilePath(projectId));
+  return readStoryboard(projectId);
 }
 
 async function saveStoryboard(projectId, scenes, source = 'manual') {
@@ -19,7 +13,7 @@ async function saveStoryboard(projectId, scenes, source = 'manual') {
     scenes,
     updatedAt: new Date().toISOString(),
   };
-  await writeJson(storyboardFilePath(projectId), payload);
+  await writeStoryboard(projectId, payload);
   return payload;
 }
 
