@@ -104,7 +104,7 @@ function App() {
     <div className="layout">
       <aside>
         <h1>SellDance AIGC Studio</h1>
-        <p>Mock e-commerce video generation starter</p>
+        <p>E-commerce video generation with local FFmpeg rendering</p>
         <nav>
           {pages.map((page) => (
             <button
