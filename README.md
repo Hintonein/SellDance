@@ -1,71 +1,66 @@
 # SellDance
 
-A maintainable starter platform for AI-generated e-commerce product videos.
+SellDance 是面向 TikTok Shop、跨境电商与社媒电商商家的 AIGC 带货短视频生成系统。
 
-This repository includes a full-stack implementation designed for TikTok Shop and online sellers. It keeps mock AI script/storyboard generation, while using a real local FFmpeg pipeline to render downloadable MP4 exports.
+参赛课题：电商场景 AIGC 带货视频生成。
 
-## Features in this starter
+核心业务价值：把商品信息、素材、Prompt、脚本、分镜和长任务渲染串成一条可运行的商家端自动出片链路。
 
-- **Product material management**: upload and organize product images, videos, and reference assets.
-- **AI script generation (mock)**: create sales scripts from product info, selling points, target audience, and marketing style.
-- **Storyboard generation (mock)**: split script into scenes and match scenes with uploaded assets.
-- **Video creation workflow**: scene-level asset assignment, subtitle burn-in, optional background music, real MP4 export, preview, and download.
-- **Task management**: queued/processing/rendering/completed/failed statuses, progress updates, retry support, and error messages.
-- **UI pages**:
-  - Project creation
-  - Material upload
-  - Script editing
-  - Storyboard editing
-  - Video preview/generation
-  - Generation history
+## 功能说明
 
-## Tech stack
+- 项目管理：创建、查看、选择、归档带货视频项目。
+- 素材管理：上传商品图片、商品视频、参考素材、Logo 等，自动生成 mock 结构化分析。
+- 脚本工作台：根据商品信息、卖点、目标人群、风格和 Prompt 生成脚本。
+- 脚本版本：支持保存脚本版本、查看版本、选择版本，并通过 Prompt 微调生成新版本。
+- 分镜编辑：从脚本生成分镜，支持编辑时长、旁白、字幕、视觉描述、镜头运动、转场、BGM 提示和素材引用。
+- 一键成片：创建视频生成任务，展示状态、进度、当前步骤、错误信息和重试入口。
+- 预览导出：完成后预览 MP4，并展示 9:16、16:9 导出入口。
 
-- **Frontend**: React + Vite
-- **Backend**: Node.js + Express
-- **Persistence**: local JSON files (mock storage, no external DB required)
+## 技术栈
 
-## Project structure
+- Frontend：React + Vite
+- Backend：Node.js + Express
+- AI 编排：集中在 mock service，后续可替换为真实 LLM/TTS/图生视频/文生视频 adapter
+- 视频渲染：本地 FFmpeg pipeline
+- 数据存储：本地 JSON 文件，位于 `backend/data`
+
+## 项目结构
 
 ```text
 SellDance/
+├─ AGENTS.md
 ├─ backend/
 │  ├─ src/
-│  │  ├─ routes/          # REST API routes
-│  │  ├─ services/        # mock AI/video/business services
-│  │  └─ config/          # path/configuration helpers
+│  │  ├─ routes/
+│  │  ├─ services/
+│  │  └─ config/
 │  ├─ data/
-│  │  ├─ assets/          # uploaded material metadata
-│  │  ├─ scripts/         # generated/edited scripts
-│  │  ├─ storyboards/     # generated/edited storyboard scenes
-│  │  ├─ generation-tasks/# render task status and history
-│  │  └─ projects/        # project records
-│  └─ uploads/            # uploaded files (local only)
+│  └─ uploads/
 ├─ frontend/
 │  └─ src/
-│     ├─ pages/           # page-level UI modules
-│     ├─ components/      # shared UI components
-│     └─ services/        # API client layer
-└─ package.json           # workspace-level run scripts
+│     ├─ pages/
+│     ├─ components/
+│     └─ services/
+└─ package.json
 ```
 
-## Getting started
+## 本地启动
 
-### 0) Install FFmpeg (required)
+### 1. 安装 FFmpeg
 
-Verify FFmpeg is available:
+视频渲染需要本地 FFmpeg：
 
 ```bash
 ffmpeg -version
 ```
 
-If missing, install it:
+如果缺失：
 
-- macOS (Homebrew): `brew install ffmpeg`
-- Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y ffmpeg`
-- Windows (winget): `winget install Gyan.FFmpeg`
+- macOS：`brew install ffmpeg`
+- Ubuntu/Debian：`sudo apt-get update && sudo apt-get install -y ffmpeg`
+- Windows：`winget install Gyan.FFmpeg`
 
-### 1) Install dependencies
+### 2. 安装依赖
 
 ```bash
 npm install
@@ -73,22 +68,25 @@ npm install --prefix backend
 npm install --prefix frontend
 ```
 
-### 2) Run both frontend and backend
+### 3. 启动前后端
 
 ```bash
 npm run dev
 ```
 
+也可以分别启动：
+
+```bash
+npm run dev:backend
+npm run dev:frontend
+```
+
+默认地址：
+
 - Frontend: `http://localhost:5173`
 - Backend API: `http://localhost:4000/api`
 
-### 3) Build frontend
-
-```bash
-npm run build
-```
-
-## Validation commands
+## 检查命令
 
 ```bash
 npm run lint
@@ -96,51 +94,108 @@ npm run build
 npm run test
 ```
 
-## API overview
+当前仓库是 JavaScript 实现，没有独立 `typecheck` 命令。
+
+## Mock 数据说明
+
+- 项目记录：`backend/data/projects`
+- 素材元数据：`backend/data/assets`
+- 脚本版本：`backend/data/scripts`
+- 分镜：`backend/data/storyboards`
+- 生成任务：`backend/data/generation-tasks`
+- 上传文件：`backend/uploads`
+
+素材上传后会生成 mock 结构化分析字段：
+
+- 主体 `subject`
+- 类目 `category`
+- 颜色 `colors`
+- 场景 `scene`
+- 风格 `style`
+- 标签 `tags`
+- 摘要 `summary`
+- `embedding` / `vector`
+
+## API 简要说明
+
+### Projects
 
 - `GET /api/projects`
 - `POST /api/projects`
+- `GET /api/projects/:projectId`
+- `PATCH /api/projects/:projectId`
+- `DELETE /api/projects/:projectId`
+
+### Assets
+
+- `GET /api/projects/:projectId/assets`
+- `POST /api/projects/:projectId/assets`
+- `GET /api/projects/:projectId/assets/:assetId`
+- `DELETE /api/projects/:projectId/assets/:assetId`
+
+兼容旧接口：
+
 - `GET /api/projects/:projectId/materials`
 - `POST /api/projects/:projectId/materials`
+
+### Scripts
+
+- `GET /api/projects/:projectId/scripts`
+- `POST /api/projects/:projectId/scripts/generate`
+- `POST /api/projects/:projectId/scripts/:scriptId/refine`
+- `GET /api/projects/:projectId/scripts/:scriptId`
+
+兼容旧接口：
+
 - `GET /api/projects/:projectId/script`
 - `POST /api/projects/:projectId/script/generate`
 - `PUT /api/projects/:projectId/script`
+
+### Storyboards
+
+- `GET /api/projects/:projectId/storyboards`
+- `POST /api/projects/:projectId/storyboards/generate`
+- `PATCH /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId`
+- `GET /api/projects/:projectId/storyboards/:storyboardId`
+
+兼容旧接口：
+
 - `GET /api/projects/:projectId/storyboard`
 - `POST /api/projects/:projectId/storyboard/generate`
 - `PUT /api/projects/:projectId/storyboard`
+
+### Generation Tasks
+
+- `GET /api/projects/:projectId/tasks`
+- `POST /api/projects/:projectId/tasks`
+- `GET /api/projects/:projectId/tasks/:taskId`
+- `POST /api/projects/:projectId/tasks/:taskId/retry`
+
+兼容旧接口：
+
 - `GET /api/projects/:projectId/video-tasks`
 - `POST /api/projects/:projectId/video-tasks`
+- `GET /api/video-tasks/:taskId`
 - `POST /api/video-tasks/:taskId/retry`
 
-`GET /api/video-tasks/:taskId` returns full task details including:
+## Demo 流程
 
-- `status` (`queued`, `processing`, `rendering`, `completed`, `failed`)
-- `progress` (0-100)
-- `errorMessage`
-- `videoUrl` (final MP4 URL when completed)
-- `exportFile` (stored path under `backend/outputs/<projectId>/`)
+1. 在 Project 页面创建项目，填写商品名、链接/ID、类目、卖点、目标人群、风格、平台和时长。
+2. 在 Materials 页面上传商品主图、视频、参考素材或 Logo。
+3. 查看素材 mock 分析结果和标签。
+4. 在 Script 页面输入 Prompt 并生成脚本。
+5. 使用 refine prompt 微调脚本并保存新版本。
+6. 选择脚本版本后生成分镜。
+7. 在 Storyboard 页面编辑每个分镜的文案、时长、视觉描述和素材引用。
+8. 在 Video Preview 页面创建生成任务。
+9. 查看任务进度、当前步骤、失败错误或重试入口。
+10. 完成后预览视频，并打开 9:16 或 16:9 导出链接。
 
-## P0 demo flow (end-to-end)
+## 源代码仓库
 
-1. Create a project in **Project creation**.
-2. Upload at least one image or video in **Material upload** (optional: upload an audio file for BGM).
-3. Generate and/or edit script in **Script editing**.
-4. Generate storyboard in **Storyboard editing**.
-5. Edit each scene:
-   - `sceneOrder`
-   - `durationSeconds`
-   - `scriptText` / `subtitleText`
-   - `layout` / `transition`
-   - manually assigned `selectedAssetIds`
-6. Save storyboard.
-7. Open **Video preview & generation** and start generation.
-8. Polling updates task status/progress automatically.
-9. When completed, preview the rendered MP4 and download it.
+`git@github.com:Hintonein/SellDance.git`
 
-## How to extend
+## 后续规划
 
-- Replace mock script/storyboard services with real LLM providers.
-- Replace local JSON storage with a real database and object storage.
-- Replace the local FFmpeg renderer with a distributed render worker queue.
-- Add authentication/authorization for multi-user teams.
-- Add automated tests for API flows and UI components.
+- P1：素材标签与 Embedding 检索、智能剪辑 Agent、分镜级复杂编辑器、TTS/字幕/BGM、多语言 dubbing、失败重试策略、生成 trace、mock 数据看板、素材切片、局部分镜刷新。
+- P2：多因子归因、Agent 编排、A/B 自动出片对比、CI/CD、可观测性、合规审核流、评论驱动二次创作、爆款视频 DNA 提取、Prompt 市场、投流冷启动加速。

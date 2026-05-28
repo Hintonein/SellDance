@@ -25,6 +25,12 @@ export default function MaterialPage({ disabled, materials, onUpload }) {
             <option value="image">Image</option>
             <option value="video">Video</option>
             <option value="reference">Reference asset</option>
+            <option value="product_image">Product image</option>
+            <option value="product_video">Product video</option>
+            <option value="reference_image">Reference image</option>
+            <option value="reference_video">Reference video</option>
+            <option value="logo">Logo</option>
+            <option value="other">Other</option>
           </select>
         </label>
         <label>
@@ -49,6 +55,7 @@ export default function MaterialPage({ disabled, materials, onUpload }) {
               <th>Name</th>
               <th>Type</th>
               <th>Size</th>
+              <th>Mock analysis</th>
             </tr>
           </thead>
           <tbody>
@@ -57,11 +64,21 @@ export default function MaterialPage({ disabled, materials, onUpload }) {
                 <td>{asset.originalName}</td>
                 <td>{asset.type}</td>
                 <td>{Math.round(asset.size / 1024)} KB</td>
+                <td>
+                  <strong>{asset.analysis?.subject || '-'}</strong>
+                  <br />
+                  <small>{asset.analysis?.summary || 'No analysis yet.'}</small>
+                  <div className="tag-row">
+                    {(asset.analysis?.tags || []).map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                </td>
               </tr>
             ))}
             {materials.length === 0 ? (
               <tr>
-                <td colSpan={3}>No materials uploaded.</td>
+                <td colSpan={4}>No materials uploaded.</td>
               </tr>
             ) : null}
           </tbody>

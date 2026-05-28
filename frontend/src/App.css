@@ -134,6 +134,33 @@ button:disabled {
   gap: 0.6rem;
 }
 
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.tag-row span {
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.project-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.35rem;
+}
+
+.project-actions button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+}
+
 .list {
   padding: 0;
   margin: 0;

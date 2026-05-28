@@ -13,10 +13,14 @@ async function getStoryboard(projectId) {
 }
 
 async function saveStoryboard(projectId, scenes, source = 'manual') {
+  const normalizedScenes = normalizeScenes(scenes);
   const payload = {
+    id: projectId,
+    storyboardId: projectId,
     projectId,
     source,
-    scenes: normalizeScenes(scenes),
+    scenes: normalizedScenes,
+    totalDuration: normalizedScenes.reduce((sum, scene) => sum + Number(scene.durationSeconds || 0), 0),
     updatedAt: new Date().toISOString(),
   };
   await writeStoryboard(projectId, payload);

@@ -13,6 +13,7 @@ export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl 
               <th>Task ID</th>
               <th>Status</th>
               <th>Progress</th>
+              <th>Step</th>
               <th>Error</th>
               <th>Export</th>
               <th></th>
@@ -24,6 +25,7 @@ export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl 
                 <td>{task.id.slice(0, 8)}</td>
                 <td>{task.status}</td>
                 <td>{task.progress}%</td>
+                <td>{task.currentStep || '-'}</td>
                 <td>{task.errorMessage || '-'}</td>
                 <td>
                   {task.videoUrl ? (
@@ -45,7 +47,7 @@ export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl 
             ))}
             {tasks.length === 0 ? (
               <tr>
-                <td colSpan={6}>No generation history yet.</td>
+                <td colSpan={7}>No generation history yet.</td>
               </tr>
             ) : null}
           </tbody>

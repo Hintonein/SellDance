@@ -30,6 +30,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [materials, setMaterials] = useState([]);
+  const [scriptRecord, setScriptRecord] = useState(null);
   const [scriptText, setScriptText] = useState('');
   const [scenes, setScenes] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -70,6 +71,7 @@ function App() {
     ]);
 
     setMaterials(materialsData);
+    setScriptRecord(scriptData.scriptId ? scriptData : null);
     setScriptText(scriptData.scriptText || '');
     setScenes(storyboardData.scenes || []);
     setTasks(taskData);
@@ -134,6 +136,12 @@ function App() {
                 setSelectedProjectId(created.id);
               }, 'Project created.')
             }
+            onArchive={(projectId) =>
+              withToast(async () => {
+                await api.archiveProject(projectId);
+                await loadProjects();
+              }, 'Project archived.')
+            }
           />
         ) : null}
 
@@ -158,12 +166,32 @@ function App() {
             onGenerate={(payload) =>
               withToast(async () => {
                 const generated = await api.generateScript(selectedProjectId, payload);
+                setScriptRecord(generated);
                 setScriptText(generated.scriptText || '');
               }, 'Script generated.')
             }
+            scriptRecord={scriptRecord}
+            onRefine={(prompt) =>
+              withToast(async () => {
+                const refined = await api.refineScript(
+                  selectedProjectId,
+                  scriptRecord?.scriptId || scriptRecord?.id,
+                  prompt
+                );
+                setScriptRecord(refined);
+                setScriptText(refined.scriptText || '');
+              }, 'Script refined.')
+            }
+            onSelectVersion={(version) => {
+              setScriptText(version.scriptText || '');
+              setScriptRecord((prev) =>
+                prev ? { ...prev, selectedVersionId: version.versionId, scriptText: version.scriptText || prev.scriptText } : prev
+              );
+            }}
             onSave={() =>
               withToast(async () => {
-                await api.saveScript(selectedProjectId, scriptText);
+                const saved = await api.saveScript(selectedProjectId, scriptText);
+                setScriptRecord(saved);
               }, 'Script saved.')
             }
           />

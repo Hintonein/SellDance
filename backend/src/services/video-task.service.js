@@ -5,16 +5,26 @@ const { listMaterials } = require('./material.service');
 const { renderProjectVideo } = require('./video-render.service');
 
 const runningJobs = new Set();
+const stepByStatus = {
+  queued: 'analyzing assets',
+  processing: 'generating script',
+  rendering: 'rendering video',
+  running: 'rendering video',
+  completed: 'exporting',
+  failed: 'failed',
+};
 
 async function getTask(taskId) {
-  return readTask(taskId);
+  const task = await readTask(taskId);
+  return task ? decorateTask(task) : null;
 }
 
 async function listTasks(projectId) {
   const tasks = await listTaskRecords();
   return tasks
     .filter((task) => task.projectId === projectId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(decorateTask);
 }
 
 async function persistTask(task) {
@@ -25,6 +35,7 @@ async function persistTask(task) {
 
 async function updateTaskState(task, { status, progress, errorMessage, exportFile, videoUrl }) {
   if (status) task.status = status;
+  if (status) task.currentStep = stepByStatus[status] || task.currentStep;
   if (typeof progress === 'number') task.progress = Math.max(0, Math.min(100, Math.round(progress)));
   if (errorMessage !== undefined) task.errorMessage = errorMessage;
   if (exportFile !== undefined) task.exportFile = exportFile;
@@ -84,11 +95,16 @@ async function createTask(projectId, options = {}) {
     projectId,
     status: 'queued',
     progress: 0,
+    currentStep: 'analyzing assets',
     errorMessage: null,
     options,
+    scriptId: options.scriptId || projectId,
+    storyboardId: options.storyboardId || projectId,
     retries: 0,
     exportFile: null,
     videoUrl: null,
+    outputVideoUrl: null,
+    exportPresets: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -117,6 +133,25 @@ async function retryTask(taskId) {
   await persistTask(nextTask);
   runTask(nextTask);
   return nextTask;
+}
+
+function decorateTask(task) {
+  const outputVideoUrl = task.outputVideoUrl || task.videoUrl || null;
+  const exportPresets = outputVideoUrl
+    ? [
+        { presetId: 'vertical', aspectRatio: '9:16', label: 'TikTok/Reels 9:16', url: outputVideoUrl },
+        { presetId: 'wide', aspectRatio: '16:9', label: 'YouTube 16:9', url: outputVideoUrl },
+      ]
+    : task.exportPresets || [];
+  return {
+    ...task,
+    taskId: task.taskId || task.id,
+    status: task.status === 'processing' || task.status === 'rendering' ? 'running' : task.status,
+    rawStatus: task.status,
+    currentStep: task.currentStep || stepByStatus[task.status] || 'queued',
+    outputVideoUrl,
+    exportPresets,
+  };
 }
 
 module.exports = {

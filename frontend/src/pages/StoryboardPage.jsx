@@ -70,6 +70,23 @@ export default function StoryboardPage({
               />
             </label>
             <label>
+              Visual description
+              <textarea
+                rows={3}
+                value={scene.visualDescription || ''}
+                onChange={(event) => onSceneUpdate(index, 'visualDescription', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Camera motion
+              <input
+                value={scene.cameraMotion || ''}
+                onChange={(event) => onSceneUpdate(index, 'cameraMotion', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
               Layout
               <select
                 value={scene.layout || 'cover'}
@@ -90,6 +107,14 @@ export default function StoryboardPage({
                 <option value="cut">Cut</option>
                 <option value="fade">Fade</option>
               </select>
+            </label>
+            <label>
+              BGM hint
+              <input
+                value={scene.bgmHint || ''}
+                onChange={(event) => onSceneUpdate(index, 'bgmHint', event.target.value)}
+                disabled={disabled}
+              />
             </label>
             <label>
               Assigned assets (manual)

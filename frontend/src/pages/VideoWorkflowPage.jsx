@@ -63,7 +63,7 @@ export default function VideoWorkflowPage({
         <h3>Latest generation task</h3>
         {latestTask ? (
           <p>
-            {latestTask.status} · {latestTask.progress}%
+            {latestTask.status} · {latestTask.progress}% · {latestTask.currentStep || 'queued'}
             {latestTask.errorMessage ? ` · ${latestTask.errorMessage}` : ''}
           </p>
         ) : (
@@ -80,6 +80,13 @@ export default function VideoWorkflowPage({
               <a href={completedVideoUrl} download>
                 Download MP4
               </a>
+            </div>
+            <div className="button-row" style={{ marginTop: '0.75rem' }}>
+              {(latestTask.exportPresets || []).map((preset) => (
+                <a key={preset.presetId} href={resolveMediaUrl(preset.url)} target="_blank" rel="noreferrer">
+                  Export {preset.aspectRatio}
+                </a>
+              ))}
             </div>
           </>
         ) : (

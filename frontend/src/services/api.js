@@ -23,6 +23,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+  updateProject: (projectId, payload) =>
+    request(`/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  archiveProject: (projectId) =>
+    request(`/projects/${projectId}`, {
+      method: 'DELETE',
+    }),
   listMaterials: (projectId) => request(`/projects/${projectId}/materials`),
   uploadMaterial: async (projectId, { file, type }) => {
     const formData = new FormData();
@@ -34,6 +44,7 @@ export const api = {
     });
   },
   getScript: (projectId) => request(`/projects/${projectId}/script`),
+  listScripts: (projectId) => request(`/projects/${projectId}/scripts`),
   generateScript: (projectId, payload) =>
     request(`/projects/${projectId}/script/generate`, {
       method: 'POST',
@@ -45,6 +56,12 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scriptText }),
+    }),
+  refineScript: (projectId, scriptId, prompt) =>
+    request(`/projects/${projectId}/scripts/${scriptId}/refine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
     }),
   getStoryboard: (projectId) => request(`/projects/${projectId}/storyboard`),
   generateStoryboard: (projectId, scriptText) =>
@@ -58,6 +75,12 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scenes }),
+    }),
+  updateStoryboardScene: (projectId, storyboardId, sceneId, payload) =>
+    request(`/projects/${projectId}/storyboards/${storyboardId}/scenes/${sceneId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     }),
   listTasks: (projectId) => request(`/projects/${projectId}/video-tasks`),
   createTask: (projectId, options) =>
