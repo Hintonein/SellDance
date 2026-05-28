@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { spawn } = require('child_process');
 const { OUTPUTS_DIR, UPLOADS_DIR } = require('../config/paths');
+const { ensureSafeId } = require('./id-validator.service');
 
 const RENDER_WIDTH = 1080;
 const RENDER_HEIGHT = 1920;
@@ -84,7 +85,9 @@ async function ensureFfmpegAvailable() {
 
 function resolveAssetPath(asset) {
   if (!asset?.filename) return null;
-  return path.join(UPLOADS_DIR, asset.filename);
+  const safeFileName = path.basename(asset.filename);
+  if (!safeFileName || safeFileName !== asset.filename) return null;
+  return path.join(UPLOADS_DIR, safeFileName);
 }
 
 function isVideoAsset(asset) {
@@ -215,6 +218,10 @@ function pickBackgroundMusicAsset(options, materialById) {
   return resolveAssetPath(asset);
 }
 
+function escapeConcatFilePath(filePath) {
+  return filePath.replace(/'/g, "'\\''");
+}
+
 async function renderProjectVideo({ projectId, taskId, scenes, materials = [], options = {}, onProgress }) {
   if (!projectId || !taskId) {
     throw new Error('projectId and taskId are required for rendering.');
@@ -225,11 +232,13 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
 
   await ensureFfmpegAvailable();
 
+  const safeProjectId = ensureSafeId(projectId);
+  const safeTaskId = ensureSafeId(taskId);
   const materialById = new Map(materials.map((asset) => [asset.id, asset]));
-  const outputDir = path.join(OUTPUTS_DIR, projectId);
-  const workDir = path.join(outputDir, `.work-${taskId}`);
+  const outputDir = path.join(OUTPUTS_DIR, safeProjectId);
+  const workDir = path.join(outputDir, `.work-${safeTaskId}`);
   const mergedPath = path.join(workDir, 'merged.mp4');
-  const finalPath = path.join(outputDir, `${taskId}.mp4`);
+  const finalPath = path.join(outputDir, `${safeTaskId}.mp4`);
 
   await fs.mkdir(workDir, { recursive: true });
   await fs.mkdir(outputDir, { recursive: true });
@@ -252,7 +261,7 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
     }
 
     const concatListPath = path.join(workDir, 'concat.txt');
-    const concatList = clipPaths.map((clipPath) => `file '${clipPath.replace(/'/g, "'\\''")}'`).join('\n');
+    const concatList = clipPaths.map((clipPath) => `file '${escapeConcatFilePath(clipPath)}'`).join('\n');
     await fs.writeFile(concatListPath, concatList, 'utf8');
 
     await runCommand('ffmpeg', [
@@ -283,8 +292,8 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
     if (onProgress) await onProgress(100);
 
     return {
-      exportFile: path.posix.join('outputs', projectId, `${taskId}.mp4`),
-      videoUrl: `/outputs/${projectId}/${taskId}.mp4`,
+      exportFile: path.posix.join('outputs', safeProjectId, `${safeTaskId}.mp4`),
+      videoUrl: `/outputs/${safeProjectId}/${safeTaskId}.mp4`,
     };
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
