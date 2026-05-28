@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "SellDance backend API for mock AIGC video generation workflow",
+  "description": "SellDance backend API for local FFmpeg AIGC video generation workflow",
   "main": "src/server.js",
   "scripts": {
     "test": "node --test",

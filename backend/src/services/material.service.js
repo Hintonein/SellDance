@@ -13,6 +13,8 @@ async function saveMaterial(projectId, file, type) {
     type: type || 'reference',
     originalName: file.originalname,
     filename: file.filename,
+    storagePath: `uploads/${file.filename}`,
+    fileUrl: `/uploads/${file.filename}`,
     mimeType: file.mimetype,
     size: file.size,
     uploadedAt: new Date().toISOString(),
