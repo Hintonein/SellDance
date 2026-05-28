@@ -12,29 +12,53 @@ function escapeForFilter(text) {
     .replace(/\\/g, '\\\\')
     .replace(/:/g, '\\:')
     .replace(/'/g, "\\'")
+    .replace(/%/g, '\\%')
+    .replace(/\r?\n/g, '\\n')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]')
     .replace(/,/g, '\\,')
     .replace(/;/g, '\\;');
 }
 
-function buildVideoFilter(subtitleText) {
-  const base = [
+function buildLayoutFilters(layout) {
+  if (layout === 'cover') {
+    return [
+      `scale='if(gt(a,${RENDER_WIDTH}/${RENDER_HEIGHT}),-1,${RENDER_WIDTH})':'if(gt(a,${RENDER_WIDTH}/${RENDER_HEIGHT}),${RENDER_HEIGHT},-1)'`,
+      `crop=${RENDER_WIDTH}:${RENDER_HEIGHT}`,
+    ];
+  }
+
+  return [
     `scale=${RENDER_WIDTH}:${RENDER_HEIGHT}:force_original_aspect_ratio=decrease`,
     `pad=${RENDER_WIDTH}:${RENDER_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black`,
-    `fps=${FRAME_RATE}`,
-    'format=yuv420p',
   ];
+}
+
+function buildVideoFilter(scene, duration) {
+  const subtitleText = scene.subtitleText || scene.scriptText || '';
+  const base = [...buildLayoutFilters(scene.layout), `fps=${FRAME_RATE}`, 'format=yuv420p'];
 
   if (!subtitleText) {
-    return base.join(',');
+    const withTransition = [...base];
+    if (scene.transition === 'fade' && duration > 0.7) {
+      const fadeDuration = Math.min(0.35, duration / 2);
+      withTransition.push(`fade=t=in:st=0:d=${fadeDuration}`);
+      withTransition.push(`fade=t=out:st=${Math.max(duration - fadeDuration, 0)}:d=${fadeDuration}`);
+    }
+    return withTransition.join(',');
   }
 
   const subtitle = escapeForFilter(subtitleText);
-  return [
+  const withSubtitle = [
     ...base,
     `drawtext=text='${subtitle}':fontcolor=white:fontsize=46:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-(text_h*2.2)`,
-  ].join(',');
+  ];
+  if (scene.transition === 'fade' && duration > 0.7) {
+    const fadeDuration = Math.min(0.35, duration / 2);
+    withSubtitle.push(`fade=t=in:st=0:d=${fadeDuration}`);
+    withSubtitle.push(`fade=t=out:st=${Math.max(duration - fadeDuration, 0)}:d=${fadeDuration}`);
+  }
+  return withSubtitle.join(',');
 }
 
 function runCommand(command, args) {
@@ -77,8 +101,7 @@ function isImageAsset(asset) {
 
 async function createSceneClip({ scene, asset, clipPath }) {
   const duration = Number(scene.durationSeconds) || 3;
-  const subtitleText = scene.subtitleText || scene.scriptText || '';
-  const vf = buildVideoFilter(subtitleText);
+  const vf = buildVideoFilter(scene, duration);
   const assetPath = resolveAssetPath(asset);
 
   if (assetPath && isImageAsset(asset)) {
@@ -211,59 +234,61 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
   await fs.mkdir(workDir, { recursive: true });
   await fs.mkdir(outputDir, { recursive: true });
 
-  const clipPaths = [];
-  for (let index = 0; index < scenes.length; index += 1) {
-    const scene = scenes[index];
-    const clipPath = path.join(workDir, `scene-${String(index + 1).padStart(3, '0')}.mp4`);
-    clipPaths.push(clipPath);
-    await createSceneClip({
-      scene,
-      asset: pickSceneAsset(scene, materialById),
-      clipPath,
-    });
-    if (onProgress) {
-      const clipProgress = Math.round(((index + 1) / scenes.length) * 70);
-      await onProgress(Math.max(10, Math.min(clipProgress, 80)));
+  try {
+    const clipPaths = [];
+    for (let index = 0; index < scenes.length; index += 1) {
+      const scene = scenes[index];
+      const clipPath = path.join(workDir, `scene-${String(index + 1).padStart(3, '0')}.mp4`);
+      clipPaths.push(clipPath);
+      await createSceneClip({
+        scene,
+        asset: pickSceneAsset(scene, materialById),
+        clipPath,
+      });
+      if (onProgress) {
+        const clipProgress = Math.round(((index + 1) / scenes.length) * 70);
+        await onProgress(Math.max(10, Math.min(clipProgress, 80)));
+      }
     }
+
+    const concatListPath = path.join(workDir, 'concat.txt');
+    const concatList = clipPaths.map((clipPath) => `file '${clipPath.replace(/'/g, "'\\''")}'`).join('\n');
+    await fs.writeFile(concatListPath, concatList, 'utf8');
+
+    await runCommand('ffmpeg', [
+      '-y',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      concatListPath,
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-r',
+      String(FRAME_RATE),
+      '-an',
+      mergedPath,
+    ]);
+    if (onProgress) await onProgress(90);
+
+    const musicAssetPath = pickBackgroundMusicAsset(options, materialById);
+    await applyBackgroundMusic({
+      inputPath: mergedPath,
+      outputPath: finalPath,
+      musicAssetPath,
+    });
+    if (onProgress) await onProgress(100);
+
+    return {
+      exportFile: path.posix.join('outputs', projectId, `${taskId}.mp4`),
+      videoUrl: `/outputs/${projectId}/${taskId}.mp4`,
+    };
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true });
   }
-
-  const concatListPath = path.join(workDir, 'concat.txt');
-  const concatList = clipPaths.map((clipPath) => `file '${clipPath.replace(/'/g, "'\\''")}'`).join('\n');
-  await fs.writeFile(concatListPath, concatList, 'utf8');
-
-  await runCommand('ffmpeg', [
-    '-y',
-    '-f',
-    'concat',
-    '-safe',
-    '0',
-    '-i',
-    concatListPath,
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
-    '-r',
-    String(FRAME_RATE),
-    '-an',
-    mergedPath,
-  ]);
-  if (onProgress) await onProgress(90);
-
-  const musicAssetPath = pickBackgroundMusicAsset(options, materialById);
-  await applyBackgroundMusic({
-    inputPath: mergedPath,
-    outputPath: finalPath,
-    musicAssetPath,
-  });
-  if (onProgress) await onProgress(100);
-
-  await fs.rm(workDir, { recursive: true, force: true });
-
-  return {
-    exportFile: path.posix.join('outputs', projectId, `${taskId}.mp4`),
-    videoUrl: `/outputs/${projectId}/${taskId}.mp4`,
-  };
 }
 
 module.exports = {
