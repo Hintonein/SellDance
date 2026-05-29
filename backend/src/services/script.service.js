@@ -63,8 +63,31 @@ async function generateAndSaveScript(projectId, input) {
   return payload;
 }
 
+
+async function listScripts(projectId) {
+  const script = await getScript(projectId);
+  return script ? [script] : [];
+}
+async function createScript(projectId, payload = {}) {
+  return saveScript(projectId, payload.scriptText || payload.text || '', { source: payload.source || 'manual' });
+}
+async function updateScript(projectId, _scriptId, payload = {}) {
+  return saveScript(projectId, payload.scriptText || payload.text || '', { source: payload.source || 'manual-update' });
+}
+async function generateScriptRecord(projectId, payload = {}) {
+  return generateAndSaveScript(projectId, payload);
+}
+async function regenerateScript(projectId, _scriptId, payload = {}) {
+  return generateAndSaveScript(projectId, payload);
+}
+
 module.exports = {
   getScript,
+  listScripts,
+  createScript,
+  updateScript,
+  generateScript: generateScriptRecord,
+  regenerateScript,
   saveScript,
   generateAndSaveScript,
 };

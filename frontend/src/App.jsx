@@ -12,6 +12,9 @@ function resolveMediaUrl(path) {
   if (!path) return '';
   if (/^https?:\/\//.test(path)) return path;
   const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+  if (!import.meta.env.VITE_API_BASE_URL) {
+    return path.startsWith('/') ? path : `/${path}`;
+  }
   const origin = new URL(apiBase).origin;
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -149,12 +152,49 @@ function App() {
           <MaterialPage
             disabled={disabled}
             materials={materials}
+            resolveMediaUrl={resolveMediaUrl}
             onUpload={(payload) =>
               withToast(async () => {
-                await api.uploadMaterial(selectedProjectId, payload);
+                await api.uploadAsset(selectedProjectId, payload);
                 setMaterials(await api.listMaterials(selectedProjectId));
               }, 'Material uploaded.')
             }
+            onDelete={(assetId) =>
+              withToast(async () => {
+                await api.deleteAsset(selectedProjectId, assetId);
+                setMaterials(await api.listMaterials(selectedProjectId));
+              }, 'Material deleted.')
+            }
+            onUpdate={(assetId, payload) => api.updateAsset(selectedProjectId, assetId, payload)}
+            onSearch={async (payload) => {
+              const result = await api.searchAssets(selectedProjectId, payload);
+              setMaterials(result.items || []);
+              return result;
+            }}
+            onGetDetail={(assetId) => api.getAsset(selectedProjectId, assetId)}
+            onGetSlices={(assetId) => api.getAssetSlices(selectedProjectId, assetId)}
+            onGenerateAsset={(payload) =>
+              (async () => {
+                try {
+                const task = await api.generateAsset(selectedProjectId, payload);
+                setMaterials(await api.listMaterials(selectedProjectId));
+                setMessage('Asset generation task created.');
+                return task;
+                } catch (error) {
+                  setMessage(error.message);
+                  throw error;
+                }
+              })()
+            }
+            onGetGenerationTask={(taskId) => api.getAssetGenerationTask(selectedProjectId, taskId)}
+            onReanalyze={(assetId) =>
+              withToast(async () => {
+                const analyzed = await api.reanalyzeAsset(selectedProjectId, assetId);
+                setMaterials(await api.listMaterials(selectedProjectId));
+                return analyzed;
+              }, 'Material reanalyzed.')
+            }
+            onRefresh={() => api.listMaterials(selectedProjectId).then(setMaterials)}
           />
         ) : null}
 

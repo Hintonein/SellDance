@@ -6,3 +6,10 @@ frontend/dist/
 backend/uploads/*
 !backend/uploads/.gitkeep
 .DS_Store
+.idea/
+.env
+backend/data/**/*.json
+.env
+backend/.env
+frontend/.env
+*.env

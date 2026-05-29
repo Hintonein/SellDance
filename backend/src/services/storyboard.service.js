@@ -33,8 +33,30 @@ async function generateAndSaveStoryboard(projectId, scriptText) {
   return saveStoryboard(projectId, scenes, 'mock-ai');
 }
 
+
+async function listStoryboards(projectId) {
+  const storyboard = await getStoryboard(projectId);
+  return storyboard ? [storyboard] : [];
+}
+async function generateStoryboard(projectId, payload = {}) {
+  return generateAndSaveStoryboard(projectId, payload.scriptText || payload.text || '');
+}
+async function updateScene(projectId, _storyboardId, sceneId, payload = {}) {
+  const storyboard = await getStoryboard(projectId);
+  if (!storyboard) return null;
+  const scenes = (storyboard.scenes || []).map((scene) => (scene.sceneId === sceneId || String(scene.sceneOrder) === String(sceneId) || String(scene.sceneIndex) === String(sceneId)) ? { ...scene, ...payload } : scene);
+  return saveStoryboard(projectId, scenes, 'manual');
+}
+async function regenerateScene(projectId, storyboardId, sceneId, payload = {}) {
+  return updateScene(projectId, storyboardId, sceneId, { ...payload, status: 'mock-regenerated' });
+}
+
 module.exports = {
   getStoryboard,
+  listStoryboards,
+  generateStoryboard,
+  updateScene,
+  regenerateScene,
   saveStoryboard,
   generateAndSaveStoryboard,
 };

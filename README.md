@@ -100,6 +100,8 @@ npm run test
 
 - 项目记录：`backend/data/projects`
 - 素材元数据：`backend/data/assets`
+- AI 素材生成任务：`backend/data/asset-generation-tasks.json`
+- 合规审核记录：`backend/data/compliance-reviews.json`
 - 脚本版本：`backend/data/scripts`
 - 分镜：`backend/data/storyboards`
 - 生成任务：`backend/data/generation-tasks`
@@ -132,6 +134,9 @@ npm run test
 - `POST /api/projects/:projectId/assets`
 - `GET /api/projects/:projectId/assets/:assetId`
 - `DELETE /api/projects/:projectId/assets/:assetId`
+- `POST /api/projects/:projectId/assets/generate`
+- `GET /api/projects/:projectId/assets/generation-tasks/:taskId`
+- `POST /api/projects/:projectId/assets/:assetId/reanalyze`
 
 兼容旧接口：
 
@@ -190,6 +195,34 @@ npm run test
 8. 在 Video Preview 页面创建生成任务。
 9. 查看任务进度、当前步骤、失败错误或重试入口。
 10. 完成后预览视频，并打开 9:16 或 16:9 导出链接。
+
+## 自建素材库与 AI 生成
+
+素材页支持上传素材、mock 生成素材、火山方舟生成素材。无 `ARK_API_KEY` 时会自动 fallback 到 mock provider，保证本地可跑。
+
+在项目根目录新建 `.env`，或在启动后端前设置环境变量：
+
+```dotenv
+ARK_API_KEY=your-api-key
+SEED_ENDPOINT_ID=ep-your-seed-2-classifier-endpoint
+SEEDANCE_ENDPOINT_ID=ep-your-seedance-endpoint
+SEEDANCE_MODEL=seedance-1.5-pro
+ARK_BASE_URL=https://ark.cn-beijing.volces.com
+```
+
+后端启动时会读取项目根目录 `.env`，也兼容 `backend/.env`。火山方舟账号如果不允许直接用模型 ID 调用，请填写控制台中的自定义 Endpoint ID；后端会优先使用 `SEEDANCE_ENDPOINT_ID`，没有配置时才 fallback 到 `SEEDANCE_MODEL`。
+
+`SEED_ENDPOINT_ID` 用于生成视频前的 Seed 2.0 Prompt 分类/结构化。系统会把项目里的 `productCategory`、`sellingPoints`、`targetAudience`、`style` 与用户 prompt 一起送入分类器，得到 `category/tags/sellingPoints/summary/enhancedPrompt`，再用增强 prompt 调用 Seedance。也兼容更明确的变量名 `SEED_CLASSIFICATION_ENDPOINT_ID`。
+
+素材页的 AI 生成入口仅保留 `seed_dance · 文生视频`。AI 文生图模块已关闭；商品图片仍可通过上传素材入库。
+
+Seed 数据：
+
+```bash
+npm run seed:mock
+```
+
+mock 视频生成依赖 `backend/uploads/demo-product-video.mp4`。seed 脚本会优先尝试用 FFmpeg 自动生成一个 demo MP4；如果失败，请手动放置该文件后重试。
 
 ## 源代码仓库
 
