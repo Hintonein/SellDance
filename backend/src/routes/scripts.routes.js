@@ -1,0 +1,10 @@
+const router = require('express').Router({ mergeParams: true });
+const { getScript, saveScript, generateAndSaveScript } = require('../services/script.service');
+router.get('/', async (req, res) => { const script = await getScript(req.params.projectId); res.json(script ? [script] : []); });
+router.post('/generate', async (req, res) => res.status(201).json(await generateAndSaveScript(req.params.projectId, req.body || {})));
+router.get('/:scriptId', async (req, res) => { const script = await getScript(req.params.projectId); if (!script) return res.status(404).json({ message: 'Script not found.' }); res.json(script); });
+router.patch('/:scriptId', async (req, res) => res.json(await saveScript(req.params.projectId, req.body.scriptText || req.body.text || '', { source: 'manual-edit' })));
+router.post('/:scriptId/refine', async (req, res) => { const current = await getScript(req.params.projectId); if (!current) return res.status(404).json({ message: 'Script not found.' }); res.json(await generateAndSaveScript(req.params.projectId, { ...(current.input || {}), prompt: req.body.prompt || '', refinePrompt: req.body.prompt || '' })); });
+router.post('/:scriptId/regenerate', async (req, res) => res.json(await generateAndSaveScript(req.params.projectId, req.body || {})));
+router.post('/:scriptId/scenes/:sceneId/regenerate', async (_req, res) => res.status(501).json({ message: 'Scene regeneration is a Phase 3 placeholder.' }));
+module.exports = router;

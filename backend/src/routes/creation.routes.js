@@ -1,0 +1,10 @@
+const router = require('express').Router({ mergeParams: true });
+const svc = require('../services/creation.service');
+router.post('/plan', async (req, res) => res.status(201).json(await svc.createEditingPlan(req.params.projectId, req.body || {})));
+router.post('/render', async (req, res) => res.status(201).json(await svc.createRenderTask(req.params.projectId, req.body || {})));
+router.get('/tasks', async (req, res) => res.json(await svc.listCreationTasks(req.params.projectId)));
+router.get('/tasks/:taskId', async (req, res) => { const task = await svc.getCreationTask(req.params.projectId, req.params.taskId); if (!task) return res.status(404).json({ message: 'Creation task not found.' }); res.json(task); });
+router.post('/tasks/:taskId/retry', async (req, res) => { const task = await svc.retryCreationTask(req.params.projectId, req.params.taskId); if (!task) return res.status(404).json({ message: 'Creation task not found.' }); res.json(task); });
+router.post('/tasks/:taskId/cancel', async (req, res, next) => { try { res.json(await svc.cancelCreationTask(req.params.projectId, req.params.taskId)); } catch (error) { next(error); } });
+router.get('/outputs', async (req, res) => res.json(await svc.listOutputs(req.params.projectId)));
+module.exports = router;
