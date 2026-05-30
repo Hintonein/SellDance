@@ -25,6 +25,6 @@ router.delete('/:assetId/slices/:sliceId', async (req, res) => { const slice = a
 router.get('/:assetId', async (req, res) => { const asset = await getAsset(req.params.projectId, req.params.assetId); if (!asset) return notFound(res); res.json(asset); });
 router.patch('/:assetId', async (req, res) => { const asset = await updateAsset(req.params.projectId, req.params.assetId, req.body || {}); if (!asset) return notFound(res); res.json(asset); });
 router.delete('/:assetId', async (req, res) => { const asset = await deleteAsset(req.params.projectId, req.params.assetId); if (!asset) return notFound(res); res.json({ success: true, deletedId: asset.id || req.params.assetId }); });
-router.post('/:assetId/analyze', async (req, res) => { const asset = await analyzeAsset(req.params.projectId, req.params.assetId); if (!asset) return notFound(res); res.json(asset); });
-router.post('/:assetId/reanalyze', async (req, res) => { const asset = await analyzeAsset(req.params.projectId, req.params.assetId); if (!asset) return notFound(res); res.json(asset); });
+router.post('/:assetId/analyze', async (req, res) => { const asset = await analyzeAsset(req.params.projectId, req.params.assetId, req.body || {}); if (!asset) return notFound(res); res.json(asset); });
+router.post('/:assetId/reanalyze', async (req, res) => { const asset = await analyzeAsset(req.params.projectId, req.params.assetId, req.body || {}); if (!asset) return notFound(res); res.json(asset); });
 module.exports = router;

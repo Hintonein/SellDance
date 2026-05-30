@@ -9,9 +9,9 @@ const {
   analyzeAsset,
   getAssetSlices,
   searchProjectAssets,
-  buildMockAnalysis,
   normalizeLegacyAssetType,
 } = require('./asset.service');
+const { buildMockAnalysis } = require('./asset-analysis.service');
 
 async function listMaterials(projectId, query) {
   if (query && Object.keys(query).length > 0) {

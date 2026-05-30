@@ -50,7 +50,7 @@ export default function MaterialPage({
 }) {
   const [uploadForm, setUploadForm] = useState({ title: '', type: '', tags: '', description: '' });
   const [file, setFile] = useState(null);
-  const [searchForm, setSearchForm] = useState({ keyword: '', type: '', tag: '' });
+  const [searchForm, setSearchForm] = useState({ keyword: '', type: '', tag: '', mediaType: '', analysisStatus: '' });
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [slices, setSlices] = useState([]);
   const [editForm, setEditForm] = useState({ title: '', description: '', type: 'image', source: 'upload', tags: '', metadata: '{}' });
@@ -147,7 +147,7 @@ export default function MaterialPage({
     setError('');
     setIsSearching(true);
     try {
-      await onSearch({ keyword: searchForm.keyword, type: searchForm.type, tag: searchForm.tag });
+      await onSearch({ keyword: searchForm.keyword, type: searchForm.type, tag: searchForm.tag, mediaType: searchForm.mediaType, analysisStatus: searchForm.analysisStatus });
     } catch (searchError) {
       setError(searchError.message);
     } finally {
@@ -156,7 +156,7 @@ export default function MaterialPage({
   };
 
   const resetSearch = async () => {
-    setSearchForm({ keyword: '', type: '', tag: '' });
+    setSearchForm({ keyword: '', type: '', tag: '', mediaType: '', analysisStatus: '' });
     setError('');
     await onRefresh();
   };
@@ -293,6 +293,24 @@ export default function MaterialPage({
             Tag
             <input value={searchForm.tag} onChange={(event) => setSearchForm((prev) => ({ ...prev, tag: event.target.value }))} disabled={disabled || isSearching} />
           </label>
+          <label>
+            Media
+            <select value={searchForm.mediaType} onChange={(event) => setSearchForm((prev) => ({ ...prev, mediaType: event.target.value }))} disabled={disabled || isSearching}>
+              <option value="">All</option>
+              <option value="image">image</option>
+              <option value="video">video</option>
+            </select>
+          </label>
+          <label>
+            Analysis
+            <select value={searchForm.analysisStatus} onChange={(event) => setSearchForm((prev) => ({ ...prev, analysisStatus: event.target.value }))} disabled={disabled || isSearching}>
+              <option value="">All</option>
+              <option value="pending">pending</option>
+              <option value="processing">processing</option>
+              <option value="completed">completed</option>
+              <option value="failed">failed</option>
+            </select>
+          </label>
         </div>
         <div className="button-row">
           <button type="button" onClick={runSearch} disabled={disabled || isSearching}>{isSearching ? 'Searching...' : 'Search'}</button>
@@ -350,6 +368,7 @@ export default function MaterialPage({
                     <h3>{asset.title || asset.name || asset.originalName}</h3>
                     <p>{asset.type} · {asset.assetType || '-'} · {formatSize(asset.size)} · {asset.source || 'upload'}</p>
                     <p>analysis: {asset.analysisStatus || 'pending'} · provider: {asset.provider || '-'}</p>
+                    {asset.metadata?.video ? <p>video: {asset.metadata.video.duration || 0}s · {asset.metadata.video.width || 0}x{asset.metadata.video.height || 0} · {asset.metadata.video.codec || '-'}</p> : null}
                   </div>
                   <div className="button-row">
                     <button type="button" onClick={() => selectAsset(asset)} disabled={disabled}>Detail</button>
@@ -359,6 +378,8 @@ export default function MaterialPage({
                 </div>
                 <p>{asset.analysis?.summary || asset.description || 'No analysis yet.'}</p>
                 <div className="tag-row">{(asset.tags || asset.analysis?.tags || []).map((tag) => <span key={tag}>{tag}</span>)}</div>
+                {asset.userTags?.length ? <small>user: {asset.userTags.join(', ')}</small> : null}
+                {asset.systemTags?.length ? <small>system: {asset.systemTags.slice(0, 8).join(', ')}</small> : null}
               </div>
             </article>
           );
@@ -396,8 +417,16 @@ export default function MaterialPage({
           </div>
           <h4>Analysis</h4>
           <pre>{JSON.stringify(selectedAsset.analysis || {}, null, 2)}</pre>
+          <h4>Video metadata</h4>
+          <pre>{JSON.stringify(selectedAsset.metadata?.video || {}, null, 2)}</pre>
           <h4>Slices ({slices.length})</h4>
-          {slices.length ? slices.map((slice) => <p key={slice.id}>{slice.startTime}s-{slice.endTime}s · {slice.visualDescription}</p>) : <p>No slices yet.</p>}
+          {slices.length ? slices.map((slice) => (
+            <div className="slice-row" key={slice.id}>
+              {slice.thumbnailUrl ? <img src={resolveMediaUrl(slice.thumbnailUrl)} alt={slice.id} /> : null}
+              <p>{slice.startTime}s-{slice.endTime}s · {slice.duration}s · {slice.visualDescription}</p>
+              <div className="tag-row">{(slice.tags || []).map((tag) => <span key={tag}>{tag}</span>)}</div>
+            </div>
+          )) : <p>No slices yet.</p>}
         </section>
       ) : null}
     </PageShell>

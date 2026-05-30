@@ -616,22 +616,189 @@ Defer:
 - Performance dashboards.
 - Attribution and optimization loops.
 
-## 12. Phased Roadmap
+## 12. Phased Roadmap and Owner Collaboration Plan
 
-### Phase 0: Code Organization and Documentation
+This chapter defines the delivery roadmap from Phase 2 onward and the collaboration model for the three owners.
 
-Goal:
+From Phase 2 onward, development should move forward through three parallel lanes:
 
-- Document current code and boundaries.
-- Avoid feature regression.
-- Mark mock/TODO/deprecated areas clearly.
+- Owner 1: Asset / Agent / Architecture
+- Owner 2: Script / Storyboard
+- Owner 3: Intelligent Creation / Editing
 
-Tasks:
+The roadmap is not a serial handoff from Asset to Script/Storyboard to Creation. Each phase should produce a usable cross-module increment. Asset-first creation can start before the script and storyboard module is fully complete. Storyboard-driven creation can be connected later through the same EditingPlan and render pipeline.
 
-- Maintain `DEVELOPMENT_GUIDE.md`.
-- Update `AGENTS.md` for handoff rules.
-- Add `.env.example`.
-- Keep current app runnable.
+Owner 1 provides stable asset, recall, provider, and architecture contracts. Owner 2 builds the structured script and storyboard layer against those contracts. Owner 3 builds the creation pipeline first from assets and slices, then later connects storyboard scenes as another input source.
+
+---
+
+### 12.1 Owner Responsibility Model
+
+#### Owner 1: Asset / Agent / Architecture Owner
+
+Owner 1 owns the asset foundation and the cross-module technical contracts.
+
+Responsibilities:
+
+- Asset upload, storage, list, detail, edit, delete, analysis, search, and recall.
+- AssetSlice model, storage, slicing, thumbnail generation, and lifecycle.
+- Asset metadata, tags, analysis result, embedding fields, and provider integration.
+- Asset Search and Asset Recall APIs consumed by Script, Storyboard, and Creation modules.
+- Provider and agent boundaries.
+- Global architecture consistency, route/service/provider layering, compatibility rules, and documentation governance.
+
+Main files:
+
+- `backend/src/routes/assets.routes.js`
+- `backend/src/routes/materials.compat.routes.js`
+- `backend/src/services/asset.service.js`
+- `backend/src/services/asset-slice.service.js`
+- `backend/src/services/asset-analysis.service.js`
+- `backend/src/services/asset-search.service.js`
+- `backend/src/services/model-provider.service.js`
+- `backend/src/services/agent.service.js`
+- `backend/src/providers/*`
+- `frontend/src/api/assets.api.js`
+- `frontend/src/components/assets/*`
+- `DEVELOPMENT_GUIDE.md`
+- `AGENTS.md`
+
+#### Owner 2: Script / Storyboard Owner
+
+Owner 2 owns the narrative, script, storyboard, and scene-level creative planning layer.
+
+Responsibilities:
+
+- Script model and structured script generation.
+- Storyboard and StoryboardScene model.
+- Scene-level asset requirements.
+- Reference video and creative template models.
+- Script-to-storyboard conversion.
+- Storyboard-to-asset matching contract.
+- Scene-level regeneration and editing.
+- Calling Asset Search / Asset Recall instead of directly accessing asset storage.
+
+Main files:
+
+- `backend/src/routes/scripts.routes.js`
+- `backend/src/routes/storyboards.routes.js`
+- `backend/src/routes/templates.routes.js`
+- `backend/src/routes/reference-videos.routes.js`
+- `backend/src/services/script.service.js`
+- `backend/src/services/storyboard.service.js`
+- `backend/src/services/template.service.js`
+- `backend/src/services/reference-video.service.js`
+- `frontend/src/api/scripts.api.js`
+- `frontend/src/api/storyboards.api.js`
+- `frontend/src/api/templates.api.js`
+- `frontend/src/components/scripts/*`
+- `frontend/src/components/storyboards/*`
+
+#### Owner 3: Intelligent Editing / Creation Owner
+
+Owner 3 owns the intelligent video creation pipeline.
+
+Responsibilities:
+
+- Asset-first intelligent editing.
+- Storyboard-driven intelligent editing.
+- EditingPlan model and timeline generation.
+- Scene-to-asset and scene-to-slice matching integration.
+- Render task lifecycle.
+- FFmpeg render pipeline.
+- Preview, export, retry, and cancel.
+- Recording which assets, slices, scripts, and storyboard scenes were used in each output.
+
+Main files:
+
+- `backend/src/routes/creation.routes.js`
+- `backend/src/routes/generation-tasks.routes.js`
+- `backend/src/services/creation.service.js`
+- `backend/src/services/creation-planning.service.js`
+- `backend/src/services/scene-asset-matching.service.js`
+- `backend/src/services/render.service.js`
+- `backend/src/services/generation-task.service.js`
+- `frontend/src/api/creation.api.js`
+- `frontend/src/api/generationTasks.api.js`
+- `frontend/src/components/creation/*`
+
+---
+
+### 12.2 Cross-owner Collaboration Rules
+
+- Owner 1 owns asset contracts. Owner 2 and Owner 3 consume assets through Asset Search / Asset Recall APIs instead of directly reading asset storage.
+- Owner 2 owns Script, Storyboard, and StoryboardScene contracts. Owner 3 consumes `StoryboardScene`, `assetRequirements`, `selectedAssetIds`, and `selectedAssetSliceIds` when using storyboard-driven creation.
+- Owner 3 owns EditingPlan, CreationTask, and render task contracts. Owner 1 and Owner 2 should not modify render task internals without coordination.
+- Asset-first creation is a first-class path. It should work from selected assets and selected slices without requiring script or storyboard data.
+- Storyboard-driven creation is another input path into the same creation pipeline. It should reuse EditingPlan and render task infrastructure instead of creating a separate render system.
+- Business services must call `model-provider.service.js`, not raw provider clients.
+- Agent orchestration must call services and model-provider boundaries, not storage files or vendor clients directly.
+- `/assets` is the canonical asset API. `/materials` remains a deprecated compatibility alias until migration is fully complete.
+- Each owner should preserve compatibility endpoints unless this guide explicitly marks them as removable.
+- Each owner must update the guide sections, API notes, schema notes, and module documentation affected by their own changes. Documentation is not owned only by Owner 1.
+- Each phase should keep the project runnable with `npm run lint`, `npm run test`, `npm run build`, `npm run dev:backend`, and `npm run dev:frontend`.
+
+---
+
+### 12.3 Cross-module Contract Versioning
+
+These contracts are shared by at least two owners and should be treated as stable once another module consumes them:
+
+- `Asset`
+- `AssetSlice`
+- `AssetSearchQuery`
+- `AssetRecallQuery`
+- `AssetRecallResult`
+- `Script`
+- `Storyboard`
+- `StoryboardScene`
+- `SceneAssetRequirement`
+- `CreationInputMode`
+- `EditingPlan`
+- `CreationTask`
+- `RenderOutput`
+- `TaskStatus`
+
+Rules:
+
+- Prefer backward-compatible field additions.
+- Do not rename, remove, or change the meaning of shared fields without updating all consumers in the same change.
+- If a breaking change is unavoidable, add a compatibility adapter or migration path first.
+- Keep deprecated fields readable until frontend and backend consumers have migrated.
+- Document every shared contract change in this guide and, when relevant, `.env.example` or `AGENTS.md`.
+
+---
+
+### 12.4 Phase Definition of Done
+
+Every phase should meet this minimum bar before handoff:
+
+- New or changed routes are documented in this guide.
+- New backend behavior lives in service files, not directly inside the route mount layer.
+- New frontend API calls live under `frontend/src/api/`; `frontend/src/services/api.js` remains a compatibility export layer.
+- Mock fallback remains available for local development unless the feature is explicitly disabled.
+- Cross-module access goes through service methods or API clients, not direct JSON file reads from another owner's module.
+- New environment variables are documented in `.env.example` and no real keys are committed.
+- `npm run lint`, `npm run test`, and `npm run build` pass, or any failure is documented with the exact reason.
+- Backend and frontend dev servers can start.
+- New API behavior is verified with curl or an equivalent manual check.
+- Existing project, asset, script, storyboard, and creation flows do not regress.
+
+---
+
+### 12.5 Completed Milestones
+
+#### Phase 0: Code Organization and Documentation
+
+Status: Completed.
+
+Completed scope:
+
+- Documented current code and boundaries.
+- Added/maintained `DEVELOPMENT_GUIDE.md`.
+- Added/maintained `AGENTS.md` for handoff rules.
+- Added `.env.example`.
+- Kept the current app runnable.
 
 Acceptance:
 
@@ -639,143 +806,572 @@ Acceptance:
 - Root has `DEVELOPMENT_GUIDE.md`.
 - Next development entry points are clear.
 
-### Phase 1: Asset Library Base Loop
+#### Phase 1: Asset Library Base Loop
 
-Goal:
+Status: Completed.
 
-- Complete upload, list, detail, delete.
-- Unify asset naming.
-- Support image/video type/source/tags/metadata.
+Completed scope:
 
-Files:
-
-- `backend/src/routes/api.js` then later `backend/src/routes/assets.routes.js`.
-- `backend/src/services/material.service.js` then later `asset.service.js`.
-- `frontend/src/pages/MaterialPage.jsx` then later `AssetLibraryPage`.
-- `frontend/src/services/api.js` then later `frontend/src/api/assets.api.js`.
+- Completed upload, list, detail, edit, delete.
+- Unified asset naming around `/assets` while preserving `/materials` compatibility.
+- Supported image/video type, source, tags, and metadata.
+- Normalized canonical Asset fields.
+- Kept existing frontend flow working.
 
 Acceptance:
 
 - Upload image/video.
 - View asset list and detail.
-- Delete asset and local file consistently.
+- Edit asset metadata.
+- Delete asset and local file consistently where possible.
 - Refresh does not show deleted asset.
 - Existing `/materials` compatibility remains.
 
-### Phase 2: Asset Structuring and Search
+#### Phase 1.5: Module Boundaries and Collaboration Groundwork
 
-Goal:
+Status: Completed.
 
-- Add AssetSlice.
-- Add mock video slicing.
-- Add keyword/tag/type search.
-- Reserve embedding search.
+Completed scope:
 
-Files:
-
-- `asset-analysis.service.js`
-- `asset-search.service.js`
-- `asset-slice.model.js`
-- `assets.routes.js`
+- Split backend API routes into domain routes.
+- Kept legacy routes compatible.
+- Introduced independent `asset-slice.service.js` and `asset-slices.json` storage.
+- Added slice list/detail/update/delete APIs.
+- Added asset recall API.
+- Added `model-provider.service.js` and `agent.service.js` boundaries.
+- Added mock and Volcengine provider boundaries.
+- Added script, storyboard, template, reference-video, creation, render, and task service boundaries.
+- Added frontend API modules and component boundaries.
+- Updated collaboration guide and handoff rules.
 
 Acceptance:
 
-- Video assets can generate slice records.
+- `backend/src/routes/api.js` is a mount-only or near mount-only router.
+- Business handlers live in domain route files.
+- AssetSlice is managed independently from Asset.
+- Embedded `asset.slices` is deprecated but still read as fallback.
+- `POST /api/projects/:projectId/assets/recall` exists.
+- Asset recall returns `{ asset, slices, score, reason }`.
+- Provider and agent boundaries exist.
+- `asset_first` and `storyboard_driven` creation paths are defined by contract.
+- Frontend API clients are split by domain.
+- `/materials` compatibility remains available.
+
+---
+
+## Phase 2: Parallel MVP Foundation
+
+Goal:
+
+Build the first usable parallel foundation for structured assets, structured script/storyboard contracts, and asset-first intelligent creation.
+
+Phase 2 should produce three usable results:
+
+- Asset module can provide structured assets, slices, search, and recall.
+- Script/storyboard module can produce structured scene contracts and asset requirements.
+- Creation module can generate an EditingPlan and basic preview/export directly from selected assets or slices.
+
+### Owner 1 Tasks: Asset Structuring, Search, and Recall
+
+Owner 1 should improve the asset system from file management into a structured asset foundation.
+
+Tasks:
+
+1. Improve first-class AssetSlice persistence.
+   - Store slices independently.
+   - Support `projectId + assetId + sliceId` queries.
+   - Cascade delete slices when an asset is deleted.
+   - Keep legacy embedded `asset.slices` as read-only fallback only.
+
+2. Implement video metadata extraction.
+   - Use FFmpeg/ffprobe to read duration, width, height, fps, codec, and format.
+   - Save video metadata into Asset metadata and/or analysis fields.
+   - Return clear errors when ffprobe is unavailable or extraction fails.
+
+3. Implement basic video slicing.
+   - Generate fixed-window slices, for example 2-3 seconds per slice.
+   - Save `startTime`, `endTime`, `duration`, `thumbnailUrl`, `tags`, and `metadata`.
+   - Generate thumbnails for slices when possible.
+   - Do not require physically cutting separate MP4 files in the first version; time ranges are enough.
+
+4. Define product/video/slice tag taxonomy.
+   - Separate `systemTags` and `userTags`.
+   - Normalize tags to lowercase canonical names.
+   - Add alias mapping for common Chinese labels, for example `特写 -> close_up`.
+   - Support product-level, video-level, and slice-level tags.
+
+5. Enhance asset search.
+   - Support keyword, tag, type, source, mediaType, and analysisStatus.
+   - Search both Asset and AssetSlice.
+   - Return matched slices, score, and reason.
+   - Support topK/limit/offset.
+
+6. Enhance asset recall.
+   - Implement rule-based scoring before embedding is available.
+   - Return `{ asset, matchedSlices, score, reason, usageSuggestion }`.
+   - Support downstream query fields from script/storyboard/creation modules.
+   - Return 501 or a clear request-level error for embedding search until implemented.
+
+7. Add Seed 2.0 multimodal analysis provider boundary.
+   - Add `AI_ASSET_ANALYSIS_PROVIDER=mock|seed2`.
+   - Keep mock provider as default.
+   - When `seed2` is enabled and env is complete, image analysis should be able to call Seed 2.0 through the provider boundary.
+   - For video, extract representative frames first, then pass them to the analysis provider.
+   - Normalize model output into `AssetAnalysis`.
+   - Never hard-code or print API keys.
+   - Missing keys should fail only the related analysis request, not backend startup.
+   - If the exact Seed 2.0 request format is not confirmed yet, keep a clear provider TODO/placeholder, but do not call raw provider clients from business services.
+
+8. Reserve embedding integration.
+   - Keep embedding fields in AssetAnalysis and AssetSlice.
+   - Keep semantic query fields in API shape.
+   - Do not block Phase 2 on vector database integration.
+   - If an embedding provider is available, first implement local cosine similarity over stored JSON vectors.
+
+Owner 1 acceptance criteria:
+
+- Uploaded videos can generate slice records.
+- Video metadata is extracted and stored.
+- Each generated slice has start time, end time, duration, and thumbnail when possible.
 - Asset and slice tags are searchable.
-- Script/creation code can call asset search API.
-- Mock analysis can be swapped with real provider.
+- `/assets/search` returns asset-level and slice-level matches.
+- `/assets/recall` returns matched slices, score, reason, and usage suggestion.
+- Asset deletion deletes related slices.
+- Mock analysis still works.
+- Seed 2.0 analysis can be enabled by env without changing business services.
+- Missing Seed 2.0 env produces a clear request-level error.
+- Lint, build, test, backend startup, and frontend startup pass.
 
-### Phase 3: Script Generation Module
+### Owner 2 Tasks: Script and Storyboard Contract Foundation
+
+Owner 2 should prepare the structured narrative layer so scripts and storyboard scenes can connect to assets and creation.
+
+Tasks:
+
+1. Define canonical script and storyboard schemas.
+   - Define `Script`, `ScriptScene`, `Storyboard`, and `StoryboardScene`.
+   - Support scene id, order, duration, voiceover, subtitle, visual description, and selling point.
+   - Keep the schema easy for frontend editing.
+
+2. Define `StoryboardScene.assetRequirements`.
+   - Include preferred media type.
+   - Include required tags and optional tags.
+   - Include keywords, duration, role, visual intent, and fallback strategy.
+   - Include fields that can be converted into an Asset Recall query.
+
+3. Define scene-level selected assets and slices.
+   - Add `selectedAssetIds`.
+   - Add `selectedAssetSliceIds`.
+   - Support candidate assets and candidate slices returned from recall.
+
+4. Replace round-robin mock asset matching.
+   - Storyboard matching should call Asset Recall.
+   - It should not directly read asset JSON files.
+   - It should attach candidate assets/slices to scenes.
+   - If recall returns no result, use a clear fallback result instead of crashing.
+
+5. Prepare structured generation and editing endpoints.
+   - Full real script generation is not required in Phase 2.
+   - Mock generation should already return structured scenes.
+   - Add or reserve edit/save endpoints for structured script/storyboard JSON.
+
+6. Provide recall query examples to Owner 1.
+   - Hook scene.
+   - Product close-up.
+   - Usage demonstration.
+   - Selling point scene.
+   - Comparison scene.
+   - Call-to-action scene.
+
+Owner 2 acceptance criteria:
+
+- Script and storyboard schemas are structured and editable.
+- `StoryboardScene` can express asset requirements.
+- `StoryboardScene` can store selected asset IDs and selected slice IDs.
+- Mock storyboard generation can produce structured scenes.
+- Storyboard matching calls Asset Recall instead of directly reading asset storage.
+- Scene data can be consumed by the Creation module.
+- Full real script generation is not required in Phase 2.
+
+### Owner 3 Tasks: Asset-first Intelligent Creation Foundation
+
+Owner 3 should build the first usable intelligent creation path directly from selected assets and slices.
+
+Tasks:
+
+1. Implement `asset_first` creation mode.
+   - Accept selected asset IDs.
+   - Accept selected slice IDs.
+   - Support direct creation without script or storyboard input.
+   - Validate that selected assets/slices belong to the current project.
+
+2. Generate a basic EditingPlan timeline.
+   - Convert selected assets/slices into ordered timeline clips.
+   - Prefer slice `startTime`, `endTime`, and `duration` when slices are available.
+   - Fallback to whole assets when no slices are selected.
+   - Keep 9:16 as the default output format.
+
+3. Connect EditingPlan to render task.
+   - Create render tasks from an EditingPlan.
+   - Generate preview/export from selected assets or slices.
+   - Use FFmpeg for the first local render pipeline where possible.
+   - Return clear task errors when rendering fails.
+
+4. Improve creation task lifecycle.
+   - Support task status query.
+   - Support retry for failed tasks.
+   - Implement or complete cancel endpoint for queued/running tasks.
+   - Keep task status transitions consistent.
+
+5. Record asset and slice usage.
+   - Store used assetIds and sliceIds in output metadata.
+   - Prepare for future feedback and optimization.
+   - Include render settings and output format in task metadata.
+
+6. Keep storyboard-driven mode contract-compatible.
+   - Do not require full storyboard-driven creation in Phase 2.
+   - Reserve input shape for `StoryboardScene.selectedAssetIds` and `StoryboardScene.selectedAssetSliceIds`.
+   - Reuse the same EditingPlan structure for future storyboard-driven creation.
+
+Owner 3 acceptance criteria:
+
+- User can select assets/slices and generate an EditingPlan.
+- Creation can render a basic preview/export from selected assets/slices.
+- Render task status is queryable.
+- Failed task can retry.
+- Queued/running task can cancel.
+- Output metadata records used assetIds and sliceIds.
+- `storyboard_driven` mode remains compatible with future storyboard inputs.
+
+### Phase 2 Integration Acceptance
+
+Phase 2 is complete when:
+
+- Asset Search and Asset Recall can be called through stable APIs.
+- Structured storyboard scenes can express asset requirements and selected slices.
+- Asset-first creation works without requiring completed script/storyboard generation.
+- The EditingPlan shape can later accept storyboard-driven inputs.
+- The project remains runnable through the standard development commands.
+
+---
+
+## Phase 3: Structured Intelligence Upgrade
 
 Goal:
 
-- Generate structured scripts from product info.
-- Support template and reference rewrite modes.
-- Add templates/reference-video models.
-- Support edit and regenerate.
+Upgrade each lane from basic contracts and mock behavior into more intelligent structured behavior while keeping the Phase 2 contracts stable.
 
-Files:
+### Owner 1 Tasks: Better Asset Intelligence
 
-- `script.service.js`
-- `template.service.js`
-- `reference-video.service.js`
-- `scripts.routes.js`
-- `templates.routes.js`
-- `reference-videos.routes.js`
+Tasks:
 
-Acceptance:
+1. Improve asset analysis fields.
+   - Extract richer object, scene, product, action, and composition tags.
+   - Improve video frame sampling for analysis.
+   - Store normalized analysis results.
+
+2. Improve recall quality.
+   - Improve rule-based scoring.
+   - Support stronger scene-intent matching.
+   - Support duration-aware slice matching.
+   - Support product-focused recall fields.
+
+3. Add local embedding search when possible.
+   - Store embedding vectors in JSON or lightweight local storage.
+   - Implement local cosine similarity before introducing a vector database.
+   - Keep embedding integration optional.
+
+4. Support additional fields requested by Owner 2 and Owner 3.
+   - Add recall query fields only through versioned or backward-compatible API changes.
+   - Keep existing consumers working.
+
+Owner 1 acceptance criteria:
+
+- Asset recall quality is better than simple keyword matching.
+- Slice-level recall works for scene requirements.
+- Optional embedding search does not break mock or rule-based recall.
+- Owner 2 and Owner 3 can keep using the same API shape.
+
+### Owner 2 Tasks: Structured Script and Storyboard Generation
+
+Tasks:
+
+1. Implement canonical Script model.
+2. Implement canonical Storyboard and StoryboardScene model.
+3. Generate structured scenes directly instead of text-only scripts.
+4. Support script modes:
+   - `free`
+   - `template`
+   - `reference_rewrite`
+   - `automated`
+
+5. Add JSON edit/save endpoint.
+6. Add single-scene regenerate endpoint.
+7. Add reference-video and template models as needed.
+8. Use Asset Recall for scene asset matching.
+
+Owner 2 acceptance criteria:
 
 - Product input generates structured scenes.
-- Scenes include visual, subtitle, voiceover, asset requirements, duration.
-- User can edit/save script.
+- Scenes include visual description, subtitle, voiceover, asset requirements, and duration.
+- User can edit and save structured script JSON.
 - User can regenerate one scene.
+- Storyboard scenes can call Asset Recall.
+- Storyboard scenes can store selected asset slices.
 
-### Phase 4: Creation and Render Tasks
+### Owner 3 Tasks: Smarter EditingPlan and Storyboard Input
+
+Tasks:
+
+1. Improve EditingPlan generation.
+   - Add smarter ordering.
+   - Add clip duration control.
+   - Add transition placeholders.
+   - Add subtitle placeholders.
+   - Add music/audio placeholders where appropriate.
+
+2. Connect storyboard-driven creation.
+   - Accept storyboard ID or storyboard scene list.
+   - Read selected asset IDs and selected slice IDs from scenes.
+   - Generate an EditingPlan from storyboard scenes.
+   - Fallback to Asset Recall when a scene has requirements but no selected assets.
+
+3. Keep asset-first mode working.
+   - Asset-first creation should remain independent.
+   - Existing asset-first inputs should remain compatible.
+
+Owner 3 acceptance criteria:
+
+- Asset-first EditingPlan quality is improved.
+- Storyboard-driven input can generate an EditingPlan.
+- Storyboard scenes can map to clips.
+- Asset-first mode continues to work.
+- Rendering can remain basic if the EditingPlan structure is correct.
+
+### Phase 3 Integration Acceptance
+
+Phase 3 is complete when:
+
+- Structured script and storyboard generation works.
+- Storyboard scenes include asset requirements and candidate assets/slices.
+- Asset-first creation still works.
+- Storyboard-driven creation can generate an EditingPlan.
+- All modules still communicate through service/API contracts instead of storage internals.
+
+---
+
+## Phase 4: End-to-end Creation and Render Flow
 
 Goal:
 
-- Create video from script/storyboard/assets.
-- Keep FFmpeg or mock render as first backend.
-- Add task status, progress, retry, cancel.
-- Support preview/export.
+Turn the structured asset, storyboard, and creation contracts into a usable end-to-end production flow.
 
-Files:
+### Owner 1 Tasks: Asset Stability and Usage Support
 
-- `creation.service.js`
-- `render.service.js`
-- `generation-task.model.js`
-- `creation.routes.js`
-- `VideoCreationPage`
-- `RenderTasksPage`
+Tasks:
 
-Acceptance:
+1. Stabilize AssetSlice, Asset Search, and Asset Recall.
+2. Provide asset/slice metadata required by render and creation.
+3. Add asset usage logging support.
+4. Improve provider error handling.
+5. Preserve compatibility with `/materials` until migration is complete.
 
-- User creates render task from script/storyboard.
+Owner 1 acceptance criteria:
+
+- Creation can reliably fetch asset and slice metadata.
+- Used assets and slices can be logged.
+- Asset recall remains stable for script/storyboard/creation consumers.
+- Provider failures do not crash unrelated flows.
+
+### Owner 2 Tasks: Creation-ready Storyboard Output
+
+Tasks:
+
+1. Ensure storyboard scenes are creation-ready.
+2. Validate scene durations, subtitles, voiceover, visual intent, and selected assets.
+3. Improve template/reference rewrite quality.
+4. Ensure every scene has either selected assets/slices or asset requirements for recall.
+5. Expose final storyboard output for creation.
+
+Owner 2 acceptance criteria:
+
+- Storyboard output can be passed directly to the Creation module.
+- Scenes have valid durations and visual requirements.
+- User edits are preserved.
+- Missing selected assets can be resolved through recall.
+
+### Owner 3 Tasks: Render Task and Export Completion
+
+Tasks:
+
+1. Complete asset-first creation.
+2. Complete storyboard-driven creation.
+3. Generate EditingPlan from selected assets/slices or storyboard scenes.
+4. Implement render task lifecycle.
+5. Implement preview/export.
+6. Implement retry and cancel.
+7. Support 9:16 default output.
+8. Record used script/storyboard/assets/slices.
+
+Owner 3 acceptance criteria:
+
+- User can create a render task from selected assets/slices.
+- User can create a render task from storyboard scenes.
 - Task status is queryable.
 - Completed task returns `outputUrl`.
-- 9:16 output works.
 - Failed task can retry.
+- Running/queued task can cancel.
+- 9:16 output works.
+- Output metadata records used assets, slices, scripts, and storyboard scenes.
 
-### Phase 5: Real Model Provider Integration
+### Phase 4 Integration Acceptance
+
+Phase 4 is complete when:
+
+- Asset-first creation can produce an output video.
+- Storyboard-driven creation can produce an output video.
+- Render task lifecycle is complete.
+- Output metadata links back to all used inputs.
+- The frontend can complete the main user flow from project assets to video export.
+
+---
+
+## Phase 5: Real Model Provider Integration
 
 Goal:
 
-- Seed 2.0 for script generation, reference analysis, asset analysis.
-- Seedance 1.5 for generated video assets.
-- Seedream optional later.
-- All calls through provider abstraction.
+Replace mock logic with real provider calls where needed, while preserving fallback behavior and clean provider boundaries.
 
-Files:
+### Owner 1 Tasks: Provider Infrastructure
 
-- `model-provider.service.js`
-- `providers/volcengine/*.js`
-- `.env.example`
+Tasks:
 
-Acceptance:
+1. Finalize model-provider abstraction.
+2. Integrate Seed 2.0 for asset analysis and multimodal support where needed.
+3. Integrate SeedDance 1.5 for generated video assets if access is confirmed.
+4. Keep Seedream disabled unless product access is confirmed.
+5. Add request-level provider errors.
+6. Save model responses structurally.
+7. Ensure `.env` can switch mock/real providers.
+
+Owner 1 acceptance criteria:
 
 - `.env` can switch mock/real providers.
 - Missing key gives clear request-level error.
 - Failed model call does not crash backend.
 - Model responses are saved structurally.
+- Business services do not call raw provider clients directly.
 
-### Phase 6: Data Feedback and Optimization
+### Owner 2 Tasks: Real Script and Reference Generation
+
+Tasks:
+
+1. Use provider abstraction for script generation.
+2. Use provider abstraction for reference rewrite.
+3. Use provider abstraction for template-assisted generation.
+4. Normalize model output into structured Script and Storyboard models.
+5. Keep mock fallback available.
+
+Owner 2 acceptance criteria:
+
+- Script generation can use mock or real provider.
+- Reference rewrite can use mock or real provider.
+- Provider output is normalized before saving.
+- Raw vendor clients are not called from script/storyboard services.
+
+### Owner 3 Tasks: Provider-aware Creation Support
+
+Tasks:
+
+1. Use provider abstraction only when creation requires model calls.
+2. Keep FFmpeg render pipeline independent from provider availability.
+3. Support generated video assets if SeedDance 1.5 integration is available.
+4. Save provider-generated creation outputs as normal assets when appropriate.
+
+Owner 3 acceptance criteria:
+
+- Creation does not depend on provider availability for local rendering.
+- Provider-generated clips can be attached to the project as assets when supported.
+- Provider failures produce clear task-level errors.
+- Render task lifecycle remains stable.
+
+### Phase 5 Integration Acceptance
+
+Phase 5 is complete when:
+
+- Mock and real provider modes can be switched by env.
+- Provider errors are request-level or task-level, not startup-level.
+- Script, asset analysis, and creation modules all use provider boundaries consistently.
+- The project can still run without real provider keys.
+
+---
+
+## Phase 6: Data Feedback and Optimization
 
 Goal:
 
-- Record asset/script/template usage and performance.
-- Support future feedback loops.
+Record usage and performance data so later versions can optimize scripts, assets, templates, and creation strategies.
 
-Files:
+### Owner 1 Tasks: Data Contracts and Storage Boundaries
 
-- `asset-usage-log.service.js`
-- `user-edit-log.service.js`
-- `performance-metrics.service.js`
+Tasks:
 
-Acceptance:
+1. Define asset usage log schema.
+2. Define user edit log schema.
+3. Define performance metrics schema.
+4. Provide storage/service boundaries.
+5. Support future import of external performance metrics.
 
-- Output video links to used assets/scripts/templates.
+Owner 1 acceptance criteria:
+
+- Usage logs can reference assets and slices.
+- Edit logs can reference scripts, storyboards, and scenes.
+- Performance metrics can be stored without blocking the main flow.
+- Storage boundaries are clear.
+
+### Owner 2 Tasks: Script and Storyboard Feedback
+
+Tasks:
+
+1. Record script edits.
+2. Record scene regeneration.
+3. Record selected strategy and creative factors.
+4. Record template/reference usage.
+5. Prepare data for future script optimization.
+
+Owner 2 acceptance criteria:
+
+- Script edits are recorded.
+- Scene regeneration history is recorded.
+- Template/reference usage is traceable.
+- Feedback data does not block script generation.
+
+### Owner 3 Tasks: Creation and Render Feedback
+
+Tasks:
+
+1. Record creation outputs.
+2. Record used assets and slices.
+3. Record used scripts and storyboard scenes.
+4. Record render settings.
+5. Record export metadata and task outcomes.
+
+Owner 3 acceptance criteria:
+
+- Output video links to used assets, slices, scripts, storyboards, and templates.
+- Render settings are recorded.
+- Task success/failure is recorded.
+- Feedback data does not block preview/export.
+
+### Phase 6 Integration Acceptance
+
+Phase 6 is complete when:
+
+- Output video links to used assets, slices, scripts, storyboards, and templates.
 - User edits are recorded.
-- External performance metrics can be imported.
+- Creation choices and render outputs are recorded.
+- External performance metrics can be imported later.
+- No analytics feature blocks the basic creation flow.
 
 ## 13. Priority Fix List
 
@@ -1053,31 +1649,13 @@ New frontend component boundaries:
 
 ### Three-owner Collaboration Model
 
-Phase is the delivery sequence, not the ownership model.
+Chapter 12 is the canonical source for owner responsibilities, cross-owner rules, contract versioning, and phase Definition of Done. Phase 1.5 established the code boundaries needed for that collaboration model:
 
-Owner 1: Asset + Agent + Architecture Owner
+- Owner 1 owns asset, AssetSlice, search, recall, provider/agent conventions, and cross-module contract governance.
+- Owner 2 owns script, storyboard, template, reference-video, and scene-level asset requirement contracts.
+- Owner 3 owns asset-first creation, storyboard-driven creation, EditingPlan, render task lifecycle, preview/export, retry/cancel, and usage recording.
 
-- Owns Asset, AssetSlice, search, recall, analysis, provider/agent conventions, and cross-module schemas.
-- Main files: `asset.service.js`, `asset-slice.service.js`, `asset-search.service.js`, `asset-analysis.service.js`, `model-provider.service.js`, `agent.service.js`, `assets.routes.js`, `materials.compat.routes.js`, `providers/*`.
-
-Owner 2: Script & Storyboard Owner
-
-- Owns ReferenceVideo, CreativeTemplate, Script, Storyboard, StoryboardScene, strategy/factors, script generation, storyboard generation, and scene requirements.
-- Main files: `script.service.js`, `storyboard.service.js`, `template.service.js`, `reference-video.service.js`, `scripts.routes.js`, `storyboards.routes.js`, `templates.routes.js`, `reference-videos.routes.js`.
-
-Owner 3: Intelligent Editing / Creation Owner
-
-- Owns asset-first editing, storyboard-driven editing, editing plans, scene-to-asset matching, render task lifecycle, FFmpeg pipeline, preview/export, retry/cancel.
-- Main files: `creation.service.js`, `creation-planning.service.js`, `scene-asset-matching.service.js`, `render.service.js`, `generation-task.service.js`, `creation.routes.js`, `generation-tasks.routes.js`.
-
-### Cross-module Contracts
-
-Stable contracts to protect:
-
-- Asset -> Script/Storyboard/Creation: `Asset`, `AssetSlice`, `AssetSearchQuery`, `AssetRecallQuery`, `AssetRecallResult`.
-- Script -> Storyboard: `Script`, `NarrativeBeat`, `CreativeStrategy`, `CreativeFactor`, `Constraint`.
-- Storyboard -> Creation: `Storyboard`, `StoryboardScene`, `SceneAssetRequirement`, `selectedAssetSliceIds`.
-- Creation -> UI: `CreationInputMode`, `EditingPlan`, `CreationTask`, `RenderOutput`, `TaskStatus`.
+Future updates should modify Chapter 12 first and keep this Phase 1.5 section as a historical completion note.
 
 ### Mock / Placeholder Status
 
@@ -1116,3 +1694,104 @@ Start from independent AssetSlice persistence and build:
 5. Seed 2.0 multimodal analysis provider interface, mock by default.
 
 Owner 3 can proceed in parallel with asset-first intelligent editing: selected assets -> EditingPlan -> render task -> preview/export.
+
+## 19. Phase 2 Owner 1 Completion Update
+
+Phase 2 Owner 1 status: completed for the asset structuring/search/recall foundation. This does not complete all Phase 2 work for Owner 2 or Owner 3.
+
+### Completed Owner 1 Capabilities
+
+- /assets remains the canonical asset API. /materials remains available as a deprecated compatibility alias.
+- Uploaded video assets are probed with ffprobe; metadata is saved under asset.metadata.video and mirrored into analysis output when analyzed.
+- Video metadata fields: duration, width, height, fps, codec, format, bitrate, frameCount, provider.
+- AssetSlice is first-class persisted data through asset-slice.service.js; new slices are not written into asset.slices.
+- Legacy embedded asset.slices remains a read-only fallback.
+- Video analyze creates fixed-window slice records, defaulting to 3-second windows.
+- Slice thumbnails are generated with ffmpeg when possible; thumbnail failure does not fail the analyze request.
+- Asset delete cascades to slices and makes best-effort deletion of asset files and slice thumbnails.
+- Tags are normalized through asset-tag.service.js, with userTags, systemTags, and backward-compatible tags.
+- Chinese aliases normalize to canonical English tags, including 特写 -> close_up, 商品 -> product, 使用 -> usage, 开箱 -> unboxing, 细节 -> detail, and 对比 -> comparison.
+- POST /api/projects/:projectId/assets/search returns asset-level and slice-level matches with asset, matchedSlices, score, and reason.
+- POST /api/projects/:projectId/assets/recall supports downstream query fields and returns asset, matchedSlices, score, reason, and usageSuggestion.
+- Embedding query shapes are retained, but embedding search/recall returns a clear 501 until semantic search is implemented.
+- AI_ASSET_ANALYSIS_PROVIDER=mock|seed2 is wired through model-provider.service.js; mock remains default.
+- Seed 2.0 analysis has an explicit provider boundary and request-level errors. Raw provider calls are not placed in business services.
+- Frontend asset page now shows video metadata and slice thumbnails when available.
+
+### Asset Contract After Owner 1 Phase 2
+
+Core fields:
+
+- id, assetId, materialId
+- projectId
+- type
+- assetType
+- mediaType
+- source
+- title, description
+- fileUrl, url, filePath, thumbnailUrl
+- mimeType, size, duration
+- userTags, systemTags, tags
+- metadata.video for video probe results
+- analysisStatus, analysis, analysisError
+- createdAt, updatedAt, uploadedAt
+
+### AssetSlice Contract After Owner 1 Phase 2
+
+Core fields:
+
+- id
+- projectId
+- assetId
+- index
+- startTime
+- endTime
+- duration
+- thumbnailUrl
+- transcript
+- visualDescription
+- userTags, systemTags, tags
+- embedding
+- metadata
+- analysisStatus
+- createdAt, updatedAt
+
+### Search And Recall Contracts
+
+Search request supports:
+
+- keyword / keywords
+- tags / tag / requiredTags
+- optionalTags
+- type
+- source
+- mediaType
+- analysisStatus
+- preferredAssetTypes
+- topK / limit / offset
+- embeddingQuery reserved with 501 response
+
+Search response returns:
+
+- items[] containing asset, matchedSlices, score, reason
+- total, limit, offset, mode
+
+Recall request additionally supports:
+
+- duration
+- visualIntent
+- sceneRole
+- semantic query fields for future embedding recall
+
+Recall response returns:
+
+- items[] containing asset, matchedSlices, score, reason, usageSuggestion
+- usageSuggestion values include use_as_hook, use_as_product_closeup, use_as_usage_demo, use_as_detail_cutaway, and use_as_transition
+
+### Phase 2 Owner 1 TODO
+
+- Implement confirmed Seed 2.0 multimodal request format inside backend/src/providers/volcengine/seed2.client.js.
+- Add real representative-frame extraction for Seed 2.0 video analysis beyond slice thumbnail generation.
+- Add local JSON cosine similarity if embedding vectors become available.
+- Add automated backend tests for upload/analyze/search/recall/delete once the test harness is expanded.
+- Clean old local mock data if historical corrupted tags are visible; runtime JSON data should not be committed.

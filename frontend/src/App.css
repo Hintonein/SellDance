@@ -245,6 +245,23 @@ button:disabled {
   margin: 0.25rem 0;
 }
 
+.slice-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.6rem;
+}
+
+.slice-row img {
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  border: 1px solid #e2e8f0;
+}
+
 .project-actions {
   display: grid;
   justify-items: end;

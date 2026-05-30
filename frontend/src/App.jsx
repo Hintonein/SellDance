@@ -8,6 +8,12 @@ import StoryboardPage from './pages/StoryboardPage';
 import VideoWorkflowPage from './pages/VideoWorkflowPage';
 import HistoryPage from './pages/HistoryPage';
 
+function normalizeAssetsResponse(response) {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items.map((item) => item.asset || item);
+  return [];
+}
+
 function resolveMediaUrl(path) {
   if (!path) return '';
   if (/^https?:\/\//.test(path)) return path;
@@ -67,13 +73,13 @@ function App() {
 
   const loadProjectData = async (projectId) => {
     const [materialsData, scriptData, storyboardData, taskData] = await Promise.all([
-      api.listMaterials(projectId),
+      api.listAssets(projectId),
       api.getScript(projectId),
       api.getStoryboard(projectId),
       api.listTasks(projectId),
     ]);
 
-    setMaterials(materialsData);
+    setMaterials(normalizeAssetsResponse(materialsData));
     setScriptRecord(scriptData.scriptId ? scriptData : null);
     setScriptText(scriptData.scriptText || '');
     setScenes(storyboardData.scenes || []);
@@ -156,19 +162,19 @@ function App() {
             onUpload={(payload) =>
               withToast(async () => {
                 await api.uploadAsset(selectedProjectId, payload);
-                setMaterials(await api.listMaterials(selectedProjectId));
+                setMaterials(normalizeAssetsResponse(await api.listAssets(selectedProjectId)));
               }, 'Material uploaded.')
             }
             onDelete={(assetId) =>
               withToast(async () => {
                 await api.deleteAsset(selectedProjectId, assetId);
-                setMaterials(await api.listMaterials(selectedProjectId));
+                setMaterials(normalizeAssetsResponse(await api.listAssets(selectedProjectId)));
               }, 'Material deleted.')
             }
             onUpdate={(assetId, payload) => api.updateAsset(selectedProjectId, assetId, payload)}
             onSearch={async (payload) => {
               const result = await api.searchAssets(selectedProjectId, payload);
-              setMaterials(result.items || []);
+              setMaterials(normalizeAssetsResponse(result));
               return result;
             }}
             onGetDetail={(assetId) => api.getAsset(selectedProjectId, assetId)}
@@ -177,7 +183,7 @@ function App() {
               (async () => {
                 try {
                 const task = await api.generateAsset(selectedProjectId, payload);
-                setMaterials(await api.listMaterials(selectedProjectId));
+                setMaterials(normalizeAssetsResponse(await api.listAssets(selectedProjectId)));
                 setMessage('Asset generation task created.');
                 return task;
                 } catch (error) {
@@ -190,11 +196,11 @@ function App() {
             onReanalyze={(assetId) =>
               withToast(async () => {
                 const analyzed = await api.reanalyzeAsset(selectedProjectId, assetId);
-                setMaterials(await api.listMaterials(selectedProjectId));
+                setMaterials(normalizeAssetsResponse(await api.listAssets(selectedProjectId)));
                 return analyzed;
               }, 'Material reanalyzed.')
             }
-            onRefresh={() => api.listMaterials(selectedProjectId).then(setMaterials)}
+            onRefresh={() => api.listAssets(selectedProjectId).then((response) => setMaterials(normalizeAssetsResponse(response)))}
           />
         ) : null}
 

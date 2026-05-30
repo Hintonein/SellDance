@@ -204,3 +204,13 @@ Code should leave interfaces open for:
 4. Treat `backend/data`, `backend/uploads`, and `backend/outputs` as local mock/runtime state.
 5. If dev requests hang up through Vite proxy, first check whether port `4000` is occupied by an old Node process and whether `nodemon` is watching runtime directories.
 6. Keep final summaries concrete: changed files, checks run, remaining gaps.
+
+## Phase 2 Asset Structuring Rules
+
+- Keep /assets as the canonical API. Keep /materials available only as a deprecated compatibility alias.
+- New AssetSlice writes must go through asset-slice.service.js and the independent asset-slices store.
+- Video metadata extraction and slice thumbnail generation belong in service files, not routes.
+- Tags should preserve tags while adding userTags and systemTags. Normalize common Chinese aliases to canonical English tags.
+- Asset Search and Asset Recall must return asset, matchedSlices, score, and reason; recall also returns usageSuggestion.
+- Embedding and semantic search shapes may remain in the API, but unimplemented vector search must return a clear 501.
+- AI_ASSET_ANALYSIS_PROVIDER defaults to mock. Seed 2.0 analysis must go through model-provider.service.js and providers/volcengine/seed2.client.js.
