@@ -12,13 +12,29 @@ async function createReferenceVideo(payload = {}) {
   return item;
 }
 async function analyzeReferenceVideo(id, payload = {}) {
+  const modelProvider = require('./model-provider.service');
   const rows = await readReferenceVideos(); let updated = null;
   const next = rows.map((item) => {
     if (item.id !== id) return item;
-    updated = { ...item, analysisReport: { provider: 'mock', summary: payload.summary || 'Mock reference video structure analysis.', factors: ['hook', 'product proof', 'CTA'] }, updatedAt: now() };
+    return item;
+  });
+  const target = rows.find((item) => item.id === id);
+  if (!target) return null;
+  const analysisReport = await modelProvider.analyzeReferenceVideo({ ...target, ...payload });
+  updated = {
+    ...target,
+    analysisReport,
+    hook: analysisReport.hook || target.hook,
+    sellingPoints: analysisReport.sellingPoints || target.sellingPoints,
+    storyboard: analysisReport.storyboard || target.storyboard,
+    style: analysisReport.style || target.style,
+    reusableFactors: analysisReport.reusableFactors || target.reusableFactors,
+    updatedAt: now(),
+  };
+  const saved = next.map((item) => {
+    if (item.id !== id) return item;
     return updated;
   });
-  if (!updated) return null;
-  await writeReferenceVideos(next); return updated;
+  await writeReferenceVideos(saved); return updated;
 }
 module.exports = { listReferenceVideos, getReferenceVideo, createReferenceVideo, analyzeReferenceVideo };

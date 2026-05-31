@@ -19,6 +19,8 @@ export default function ScriptPage({
   onSelectVersion,
   onSave,
   onScriptChange,
+  onScriptSceneUpdate,
+  onSceneRegenerate,
 }) {
   const [input, setInput] = useState(initialInput);
   const [refinePrompt, setRefinePrompt] = useState('更适合 TikTok Shop，语气更强，CTA 更直接。');
@@ -38,7 +40,13 @@ export default function ScriptPage({
       title="Script editing"
       description="Generate and edit short-form selling scripts with target audience and style controls."
     >
-      <div className="card form">
+      <div className="card form section-card">
+        <div className="section-heading">
+          <div>
+            <h3>Script inputs</h3>
+            <p>Describe the product, audience, selling points, and prompt strategy.</p>
+          </div>
+        </div>
         <label>
           Product info
           <input
@@ -95,13 +103,13 @@ export default function ScriptPage({
           <button type="button" onClick={generate} disabled={disabled}>
             Generate script
           </button>
-          <button type="button" onClick={onSave} disabled={disabled || !scriptText.trim()}>
+          <button type="button" onClick={onSave} disabled={disabled || (!scriptText.trim() && !scriptRecord?.scenes?.length)}>
             Save script
           </button>
         </div>
       </div>
 
-      <div className="card form">
+      <div className="card form section-card">
         {scriptRecord?.versions?.length ? (
           <div>
             <h3>Script versions</h3>
@@ -120,7 +128,7 @@ export default function ScriptPage({
           </div>
         ) : null}
         <label>
-          Script
+          Script text
           <textarea
             rows={8}
             value={scriptText}
@@ -143,6 +151,96 @@ export default function ScriptPage({
         >
           Refine and save new version
         </button>
+      </div>
+
+      <div className="section-heading">
+        <div>
+          <h3>Structured scenes</h3>
+          <p>Each scene is editable JSON-ready input for storyboard planning and creation.</p>
+        </div>
+      </div>
+      <div className="scene-grid">
+        {(scriptRecord?.scenes || []).map((scene, index) => (
+          <article key={scene.id || index} className="card form scene-card">
+            <div className="section-heading">
+              <div>
+                <h3>Scene {scene.order || index + 1}</h3>
+                <p>{scene.sceneRole} · {scene.duration}s · {scene.sellingPoint || 'selling point pending'}</p>
+              </div>
+            </div>
+            <label>
+              Role
+              <select
+                value={scene.sceneRole || 'selling_point'}
+                onChange={(event) => onScriptSceneUpdate(index, 'sceneRole', event.target.value)}
+                disabled={disabled}
+              >
+                <option value="hook">hook</option>
+                <option value="product_closeup">product_closeup</option>
+                <option value="usage_demo">usage_demo</option>
+                <option value="selling_point">selling_point</option>
+                <option value="comparison">comparison</option>
+                <option value="cta">cta</option>
+                <option value="transition">transition</option>
+              </select>
+            </label>
+            <label>
+              Duration
+              <input
+                type="number"
+                min="1"
+                max="6"
+                step="0.1"
+                value={scene.duration || 3}
+                onChange={(event) => onScriptSceneUpdate(index, 'duration', Number(event.target.value) || 3)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Visual description
+              <textarea
+                rows={3}
+                value={scene.visualDescription || ''}
+                onChange={(event) => onScriptSceneUpdate(index, 'visualDescription', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Voiceover
+              <textarea
+                rows={3}
+                value={scene.voiceover || ''}
+                onChange={(event) => onScriptSceneUpdate(index, 'voiceover', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Subtitle
+              <input
+                value={scene.subtitle || ''}
+                onChange={(event) => onScriptSceneUpdate(index, 'subtitle', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <label>
+              Asset intent
+              <textarea
+                rows={2}
+                value={scene.narrativeGoal || ''}
+                onChange={(event) => onScriptSceneUpdate(index, 'narrativeGoal', event.target.value)}
+                disabled={disabled}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={disabled || !scriptRecord}
+              onClick={() => onSceneRegenerate(scene.id, { prompt: refinePrompt })}
+            >
+              Regenerate scene
+            </button>
+          </article>
+        ))}
+        {scriptRecord && !scriptRecord.scenes?.length ? <p className="card">No structured scenes yet.</p> : null}
       </div>
     </PageShell>
   );

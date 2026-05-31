@@ -14,9 +14,9 @@ router.delete('/:projectId', async (req, res) => { const project = await archive
 // Legacy singular script/storyboard and video-task routes used by the current frontend.
 router.get('/:projectId/script', async (req, res) => res.json((await getScript(req.params.projectId)) || {}));
 router.post('/:projectId/script/generate', async (req, res) => res.status(201).json(await generateAndSaveScript(req.params.projectId, req.body || {})));
-router.put('/:projectId/script', async (req, res) => { if (!req.body.scriptText) return res.status(400).json({ message: 'scriptText is required.' }); res.json(await saveScript(req.params.projectId, req.body.scriptText, { source: 'manual' })); });
+router.put('/:projectId/script', async (req, res) => { if (!req.body.scriptText && !req.body.scenes) return res.status(400).json({ message: 'scriptText or scenes are required.' }); res.json(await saveScript(req.params.projectId, req.body.scenes ? req.body : req.body.scriptText, { source: 'manual' })); });
 router.get('/:projectId/storyboard', async (req, res) => res.json((await getStoryboard(req.params.projectId)) || { scenes: [] }));
-router.post('/:projectId/storyboard/generate', async (req, res) => { if (!req.body.scriptText) return res.status(400).json({ message: 'scriptText is required.' }); res.status(201).json(await generateAndSaveStoryboard(req.params.projectId, req.body.scriptText)); });
+router.post('/:projectId/storyboard/generate', async (req, res) => { if (!req.body.scriptText && !req.body.scriptId && !req.body.scenes) return res.status(400).json({ message: 'scriptText, scriptId, or scenes are required.' }); res.status(201).json(await generateAndSaveStoryboard(req.params.projectId, { ...req.body, scriptText: req.body.scriptText || req.body.text })); });
 router.put('/:projectId/storyboard', async (req, res) => { if (!Array.isArray(req.body.scenes)) return res.status(400).json({ message: 'scenes must be an array.' }); res.json(await saveStoryboard(req.params.projectId, req.body.scenes, 'manual')); });
 router.get('/:projectId/video-tasks', async (req, res) => res.json(await videoTask.listTasks(req.params.projectId)));
 router.post('/:projectId/video-tasks', async (req, res) => res.status(201).json(await videoTask.createTask(req.params.projectId, req.body || {})));

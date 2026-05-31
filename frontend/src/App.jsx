@@ -41,7 +41,9 @@ function App() {
   const [materials, setMaterials] = useState([]);
   const [scriptRecord, setScriptRecord] = useState(null);
   const [scriptText, setScriptText] = useState('');
+  const [storyboardRecord, setStoryboardRecord] = useState(null);
   const [scenes, setScenes] = useState([]);
+  const [editingPlan, setEditingPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [message, setMessage] = useState('');
 
@@ -82,6 +84,7 @@ function App() {
     setMaterials(normalizeAssetsResponse(materialsData));
     setScriptRecord(scriptData.scriptId ? scriptData : null);
     setScriptText(scriptData.scriptText || '');
+    setStoryboardRecord(storyboardData.storyboardId ? storyboardData : null);
     setScenes(storyboardData.scenes || []);
     setTasks(taskData);
   };
@@ -209,6 +212,15 @@ function App() {
             disabled={disabled}
             scriptText={scriptText}
             onScriptChange={setScriptText}
+            onScriptSceneUpdate={(index, key, value) =>
+              setScriptRecord((prev) => {
+                if (!prev) return prev;
+                const scenesNext = (prev.scenes || []).map((scene, sceneIndex) =>
+                  sceneIndex === index ? { ...scene, [key]: value } : scene
+                );
+                return { ...prev, scenes: scenesNext };
+              })
+            }
             onGenerate={(payload) =>
               withToast(async () => {
                 const generated = await api.generateScript(selectedProjectId, payload);
@@ -231,14 +243,27 @@ function App() {
             onSelectVersion={(version) => {
               setScriptText(version.scriptText || '');
               setScriptRecord((prev) =>
-                prev ? { ...prev, selectedVersionId: version.versionId, scriptText: version.scriptText || prev.scriptText } : prev
+                prev ? { ...prev, selectedVersionId: version.versionId, scriptText: version.scriptText || prev.scriptText, scenes: version.scenes || prev.scenes } : prev
               );
             }}
             onSave={() =>
               withToast(async () => {
-                const saved = await api.saveScript(selectedProjectId, scriptText);
+                const saved = await api.saveScript(selectedProjectId, scriptRecord ? { ...scriptRecord, scriptText } : scriptText);
                 setScriptRecord(saved);
+                setScriptText(saved.scriptText || scriptText);
               }, 'Script saved.')
+            }
+            onSceneRegenerate={(sceneId, payload) =>
+              withToast(async () => {
+                const regenerated = await api.regenerateScriptScene(
+                  selectedProjectId,
+                  scriptRecord?.id || scriptRecord?.scriptId,
+                  sceneId,
+                  payload
+                );
+                setScriptRecord(regenerated);
+                setScriptText(regenerated.scriptText || '');
+              }, 'Script scene regenerated.')
             }
           />
         ) : null}
@@ -247,11 +272,14 @@ function App() {
           <StoryboardPage
             disabled={disabled}
             scriptText={scriptText}
+            scriptRecord={scriptRecord}
+            storyboard={storyboardRecord}
             scenes={scenes}
             materials={materials}
-            onGenerate={(text) =>
+            onGenerate={(payload) =>
               withToast(async () => {
-                const generated = await api.generateStoryboard(selectedProjectId, text);
+                const generated = await api.generateStoryboard(selectedProjectId, payload);
+                setStoryboardRecord(generated);
                 setScenes(generated.scenes || []);
               }, 'Storyboard generated.')
             }
@@ -264,8 +292,23 @@ function App() {
             }
             onSave={() =>
               withToast(async () => {
-                await api.saveStoryboard(selectedProjectId, scenes);
+                const saved = await api.saveStoryboard(selectedProjectId, scenes);
+                setStoryboardRecord(saved);
               }, 'Storyboard saved.')
+            }
+            onSceneSave={(storyboardId, sceneId, payload) =>
+              withToast(async () => {
+                const saved = await api.updateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+              }, 'Storyboard scene saved.')
+            }
+            onSceneRegenerate={(storyboardId, sceneId, payload) =>
+              withToast(async () => {
+                const saved = await api.regenerateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+              }, 'Storyboard scene regenerated.')
             }
           />
         ) : null}
@@ -276,12 +319,31 @@ function App() {
             scenes={scenes}
             materials={materials}
             latestTask={tasks[0]}
+            editingPlan={editingPlan}
             resolveMediaUrl={resolveMediaUrl}
-            onCreateTask={(payload) =>
+            onCreatePlan={(payload) =>
               withToast(async () => {
-                await api.createTask(selectedProjectId, payload);
+                const plan = await api.createEditingPlan(selectedProjectId, payload);
+                setEditingPlan(plan);
+              }, 'Editing plan created.')
+            }
+            onRenderPlan={(payload) =>
+              withToast(async () => {
+                await api.renderCreation(selectedProjectId, payload);
                 setTasks(await api.listTasks(selectedProjectId));
-              }, 'Generation task started.')
+              }, 'Render task started.')
+            }
+            onRetryTask={(taskId) =>
+              withToast(async () => {
+                await api.retryCreationTask(selectedProjectId, taskId);
+                setTasks(await api.listTasks(selectedProjectId));
+              }, 'Task retried.')
+            }
+            onCancelTask={(taskId) =>
+              withToast(async () => {
+                await api.cancelCreationTask(selectedProjectId, taskId);
+                setTasks(await api.listTasks(selectedProjectId));
+              }, 'Task canceled.')
             }
           />
         ) : null}

@@ -49,7 +49,7 @@ function buildLayoutFilters(layout) {
   ];
 }
 
-function buildVideoFilter(scene, duration) {
+function buildVideoFilter(scene, duration, includeSubtitle = true) {
   const subtitleText = scene.subtitleText || scene.scriptText || '';
   const base = [...buildLayoutFilters(scene.layout), `fps=${FRAME_RATE}`, 'format=yuv420p'];
   const withTransition = [...base];
@@ -61,7 +61,7 @@ function buildVideoFilter(scene, duration) {
     }
   }
 
-  if (!subtitleText) {
+  if (!includeSubtitle || !subtitleText) {
     return withTransition.join(',');
   }
 
@@ -70,6 +70,15 @@ function buildVideoFilter(scene, duration) {
     `drawtext=text='${subtitle}':fontcolor=white:fontsize=46:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-(text_h*2.2)`,
   );
   return withTransition.join(',');
+}
+
+async function runWithSubtitleFallback(buildArgs) {
+  try {
+    await runCommand('ffmpeg', buildArgs(true));
+  } catch (error) {
+    if (!String(error.message || '').includes('No such filter:')) throw error;
+    await runCommand('ffmpeg', buildArgs(false));
+  }
 }
 
 function runCommand(command, args) {
@@ -94,31 +103,38 @@ async function ensureFfmpegAvailable() {
 }
 
 function resolveAssetPath(asset) {
-  if (!asset?.filename) return null;
-  const safeFileName = path.basename(asset.filename);
-  if (!safeFileName || safeFileName !== asset.filename) return null;
-  return resolveSafePath(UPLOADS_DIR, safeFileName);
+  if (asset?.filename) {
+    const safeFileName = path.basename(asset.filename);
+    if (safeFileName && safeFileName === asset.filename) return resolveSafePath(UPLOADS_DIR, safeFileName);
+  }
+  const fileUrl = asset?.fileUrl || asset?.url || asset?.sourceUrl;
+  if (typeof fileUrl === 'string' && fileUrl.startsWith('/uploads/')) {
+    const relative = fileUrl.replace(/^\/uploads\//, '');
+    if (relative && !relative.includes('..') && !path.isAbsolute(relative)) return resolveSafePath(UPLOADS_DIR, relative);
+  }
+  return null;
 }
 
 function isVideoAsset(asset) {
   if (!asset) return false;
   if ((asset.mimeType || '').startsWith('video/')) return true;
+  if (asset.mediaType === 'video') return true;
   return asset.type === 'video';
 }
 
 function isImageAsset(asset) {
   if (!asset) return false;
   if ((asset.mimeType || '').startsWith('image/')) return true;
+  if (asset.mediaType === 'image') return true;
   return asset.type === 'image';
 }
 
 async function createSceneClip({ scene, asset, clipPath }) {
-  const duration = Number(scene.durationSeconds) || 3;
-  const vf = buildVideoFilter(scene, duration);
+  const duration = Number(scene.durationSeconds || scene.duration) || 3;
   const assetPath = resolveAssetPath(asset);
 
   if (assetPath && isImageAsset(asset)) {
-    await runCommand('ffmpeg', [
+    await runWithSubtitleFallback((includeSubtitle) => [
       '-y',
       '-loop',
       '1',
@@ -127,7 +143,7 @@ async function createSceneClip({ scene, asset, clipPath }) {
       '-t',
       String(duration),
       '-vf',
-      vf,
+      buildVideoFilter(scene, duration, includeSubtitle),
       '-r',
       String(FRAME_RATE),
       '-c:v',
@@ -141,36 +157,43 @@ async function createSceneClip({ scene, asset, clipPath }) {
   }
 
   if (assetPath && isVideoAsset(asset)) {
-    await runCommand('ffmpeg', [
+    await runWithSubtitleFallback((includeSubtitle) => {
+      const args = [
       '-y',
-      '-stream_loop',
-      '-1',
-      '-i',
-      assetPath,
-      '-t',
-      String(duration),
-      '-vf',
-      vf,
-      '-r',
-      String(FRAME_RATE),
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-an',
-      clipPath,
-    ]);
+      ];
+      const startTime = Number(scene.startTime || 0);
+      if (Number.isFinite(startTime) && startTime > 0) args.push('-ss', String(startTime));
+      args.push(
+        '-stream_loop',
+        '-1',
+        '-i',
+        assetPath,
+        '-t',
+        String(duration),
+        '-vf',
+        buildVideoFilter(scene, duration, includeSubtitle),
+        '-r',
+        String(FRAME_RATE),
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-an',
+        clipPath,
+      );
+      return args;
+    });
     return;
   }
 
-  await runCommand('ffmpeg', [
+  await runWithSubtitleFallback((includeSubtitle) => [
     '-y',
     '-f',
     'lavfi',
     '-i',
     `color=c=black:s=${RENDER_WIDTH}x${RENDER_HEIGHT}:d=${duration}`,
     '-vf',
-    vf,
+    buildVideoFilter(scene, duration, includeSubtitle),
     '-r',
     String(FRAME_RATE),
     '-c:v',
@@ -189,6 +212,27 @@ function pickSceneAsset(scene, materialById) {
     if (asset) return asset;
   }
   return null;
+}
+
+function clipsToRenderScenes(clips = []) {
+  return clips.map((clip, index) => ({
+    sceneId: clip.sceneId || clip.id,
+    sceneOrder: index + 1,
+    sceneIndex: index + 1,
+    durationSeconds: Number(clip.duration || 3),
+    duration: Number(clip.duration || 3),
+    startTime: clip.startTime,
+    endTime: clip.endTime,
+    subtitleText: clip.subtitle || clip.voiceover || '',
+    subtitle: clip.subtitle || clip.voiceover || '',
+    scriptText: clip.voiceover || clip.subtitle || '',
+    visualDescription: clip.subtitle || clip.role || '',
+    cameraMotion: 'editing-plan cut',
+    selectedAssetIds: clip.assetId ? [clip.assetId] : [],
+    selectedAssetSliceIds: clip.sliceId ? [clip.sliceId] : [],
+    layout: clip.fitMode === 'contain' ? 'contain' : 'cover',
+    transition: clip.transitionIn === 'fade' ? 'fade' : 'cut',
+  }));
 }
 
 function pickBackgroundMusicAsset(options, materialById) {
@@ -303,4 +347,5 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
 
 module.exports = {
   renderProjectVideo,
+  clipsToRenderScenes,
 };

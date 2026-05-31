@@ -11,6 +11,11 @@ async function createTemplate(payload = {}) {
   await writeTemplates([item, ...(await readTemplates())]);
   return item;
 }
+async function mineTemplate(payload = {}) {
+  const modelProvider = require('./model-provider.service');
+  const mined = await modelProvider.mineCreativeTemplate(payload);
+  return createTemplate(mined);
+}
 async function updateTemplate(templateId, payload = {}) {
   const rows = await readTemplates(); let updated = null;
   const next = rows.map((tpl) => tpl.id === templateId ? (updated = { ...tpl, ...payload, id: tpl.id, updatedAt: now() }) : tpl);
@@ -21,4 +26,4 @@ async function deleteTemplate(templateId) {
   const rows = await readTemplates(); const target = rows.find((tpl) => tpl.id === templateId);
   if (!target) return null; await writeTemplates(rows.filter((tpl) => tpl.id !== templateId)); return target;
 }
-module.exports = { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate };
+module.exports = { listTemplates, getTemplate, createTemplate, mineTemplate, updateTemplate, deleteTemplate };

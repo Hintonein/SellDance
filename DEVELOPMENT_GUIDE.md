@@ -2,10 +2,10 @@
 
 ## 1. Current Project State
 
-SellDance is a runnable prototype for e-commerce AIGC short-video generation. The current code already covers a minimal P0 flow:
+SellDance is a runnable prototype for e-commerce AIGC short-video generation. The current code covers the P0 flow and the Phase 2 structured creation foundation:
 
 ```text
-Project -> Asset upload / AI video asset generation -> Mock script -> Mock storyboard -> FFmpeg render task -> Preview / export
+Project -> Asset upload / AI video asset generation -> Structured script -> Storyboard + Asset Recall -> EditingPlan -> FFmpeg render task -> Preview / export
 ```
 
 The implementation is intentionally lightweight and file-based. It is useful for demo validation, but several domains are still mock, mixed in naming, or concentrated in oversized files.
@@ -48,18 +48,18 @@ Current backend layering exists but is partial:
 | Project create/list/detail/update/archive | Done | `DELETE /api/projects/:projectId` marks archived. IDs now allow hyphen/underscore. |
 | Material/asset upload | Done | `/materials` and `/assets` both upload with `multer`; metadata stored in `backend/data/assets/<projectId>.json`. |
 | Asset list/detail/delete | Done | Delete supports `id` and `assetId`; local `/uploads/...` file deletion is best-effort. |
-| Asset structured analysis | Mock | `buildMockAnalysis` generates tags, summary, vector fields. No real multimodal analysis or slicing yet. |
-| Asset search | Missing | No keyword/tag/vector search endpoint yet. |
+| Asset structured analysis | Done for Phase 2 | Mock is default. Seed 2.0 asset analysis is behind `model-provider.service.js` and provider clients, with request-level failures. |
+| Asset search / recall | Done for Phase 2 | Keyword/tag rule-based search and recall return assets, matched slices, score, reason, and usage suggestion. Vector search returns clear 501. |
 | AI-generated assets | Half done | Only Seedance text-to-video is enabled. Async task + polling exists. Seedream image generation is disabled in UI/business flow. |
 | Compliance review | Half done | AI-generated assets create review records in `backend/data/compliance-reviews.json`; no UI/review workflow yet. |
-| Script generation | Mock | `ai-script.service.js` uses template logic, not real Seed 2.0. Versions are stored. |
-| Script edit/refine | Half done | Text edit and refine create versions; no structured JSON editor or scene-level script regeneration. |
-| Storyboard generation | Mock | Splits script sentences and round-robin matches assets. Basic scene edit exists. |
-| Storyboard asset matching | Mock | Matches by index, not asset tags/slices/requirements. |
-| Video render task | Done for local demo | Uses FFmpeg to render 9:16 MP4 with subtitles. Needs stronger error handling and format presets. |
-| Task progress/retry/history | Done for demo | Async task state and polling are available. Cancel is missing. |
-| Reference video library | Missing | No entities/APIs yet. Must not download or reuse third-party videos; store only analysis and source declaration. |
-| Creative templates/factors | Missing | No template/factor data model or UI yet. |
+| Script generation | Done for Phase 2 / MVP Phase 3 | Mock structured Script JSON is default. Agent/model-provider boundaries exist for Seed 2.0 script generation, with missing env as request-level error. |
+| Script edit/refine | Done for Phase 2 | Structured edit, version saving, full regenerate, and single-scene regenerate are available. |
+| Storyboard generation | Done for Phase 2 | Generates structured storyboard scenes from Script scenes and calls Asset Recall for candidates/selections. |
+| Storyboard asset matching | Done for Phase 2 | Scene asset requirements convert to Asset Recall queries; no-result fallback is structured and non-fatal. |
+| Video render task | Done for Phase 2 | EditingPlan can render mixed image/video clips through FFmpeg, with subtitle overlay when FFmpeg supports `drawtext` and fallback when it does not. |
+| Task progress/retry/history | Done for Phase 2 | Async task query/retry/cancel are available through creation routes and compatibility routes. |
+| Reference video library | MVP Phase 3 | Stores source URL/declaration and structured analysis only. No third-party video download/reuse. |
+| Creative templates/factors | MVP Phase 3 | Templates can be created or mock-mined from reference reports. |
 | Data feedback loop | Missing/postpone | Seed data includes distribution/conversion events, but no API or UI. |
 
 ## 4. Current API Routes
@@ -99,7 +99,10 @@ Notes:
 - `GET /api/projects/:projectId/scripts`
 - `POST /api/projects/:projectId/scripts/generate`
 - `GET /api/projects/:projectId/scripts/:scriptId`
+- `PATCH /api/projects/:projectId/scripts/:scriptId`
 - `POST /api/projects/:projectId/scripts/:scriptId/refine`
+- `POST /api/projects/:projectId/scripts/:scriptId/regenerate`
+- `POST /api/projects/:projectId/scripts/:scriptId/scenes/:sceneId/regenerate`
 
 Notes:
 
@@ -114,6 +117,22 @@ Notes:
 - `POST /api/projects/:projectId/storyboards/generate`
 - `GET /api/projects/:projectId/storyboards/:storyboardId`
 - `PATCH /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId`
+- `POST /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId/regenerate`
+
+Notes:
+
+- Storyboard generation now consumes Script scenes and uses Asset Recall through service boundaries. It does not directly read asset JSON.
+- Each scene includes `assetRequirements`, `candidateAssets`, `candidateSlices`, `selectedAssetIds`, and `selectedAssetSliceIds`.
+
+### Existing Creation Routes
+
+- `POST /api/projects/:projectId/creation/plan`
+- `POST /api/projects/:projectId/creation/render`
+- `GET /api/projects/:projectId/creation/tasks`
+- `GET /api/projects/:projectId/creation/tasks/:taskId`
+- `POST /api/projects/:projectId/creation/tasks/:taskId/retry`
+- `POST /api/projects/:projectId/creation/tasks/:taskId/cancel`
+- `GET /api/projects/:projectId/creation/outputs`
 
 ### Existing Video Task Routes
 
@@ -123,6 +142,7 @@ Notes:
 - `POST /api/projects/:projectId/tasks`
 - `GET /api/projects/:projectId/tasks/:taskId`
 - `POST /api/projects/:projectId/tasks/:taskId/retry`
+- `POST /api/projects/:projectId/generation-tasks/:taskId/cancel`
 - `GET /api/video-tasks/:taskId`
 - `POST /api/video-tasks/:taskId/retry`
 
@@ -164,25 +184,25 @@ Important constraints:
 Current env loading:
 
 - `backend/src/config/env.js` loads root `.env`, then `backend/.env` if present.
-- Existing code uses `ARK_API_KEY`, `ARK_BASE_URL`, `SEEDANCE_ENDPOINT_ID`, `SEEDANCE_MODEL`, `SEED_ENDPOINT_ID`, `SEED_CLASSIFICATION_ENDPOINT_ID`, `ARK_POLL_ATTEMPTS`, `ARK_POLL_INTERVAL_MS`.
+- Existing code uses `ARK_API_KEY`, `ARK_BASE_URL`, `SEEDANCE_ENDPOINT_ID`, `SEEDANCE_MODEL`, `SEED_ENDPOINT_ID`, `ARK_POLL_ATTEMPTS`, `ARK_POLL_INTERVAL_MS`.
 
 Current provider behavior:
 
 - Seedance video generation: half done through `POST /api/v3/contents/generations/tasks` and polling.
-- Seed 2.0 classification: half done through Ark chat completions with endpoint/model from `SEED_CLASSIFICATION_ENDPOINT_ID` or `SEED_ENDPOINT_ID`.
+- Seed 2.0 asset analysis: implemented through Ark Responses API with endpoint from `SEED_ENDPOINT_ID`. This account should not use Seed 2.0 model names, `SEED2_MODEL`, or `SEED2_ENDPOINT_ID` for new code.
 - Seedream image generation: adapter function still exists, but business/UI should not enable it until account access and product decision are confirmed.
 - Script generation: mock only, not using Seed 2.0 yet.
+- Script/storyboard/reference/template provider methods: mock by default. Seed 2.0 hooks are request-level guarded by `ARK_API_KEY` and `SEED_ENDPOINT_ID`.
 - Asset analysis: mock only, not using real multimodal analysis yet.
 
-Recommended future env design:
+Recommended env design:
 
 ```dotenv
 ARK_BASE_URL=https://ark.cn-beijing.volces.com
 ARK_API_KEY=your_ark_api_key
 
-SEED2_API_KEY=
-SEED2_MODEL=
-SEED2_ENDPOINT_ID=
+# Seed 2.0 multimodal analysis endpoint for this account.
+SEED_ENDPOINT_ID=
 
 SEEDDANCE_API_KEY=
 SEEDDANCE_MODEL=
@@ -207,7 +227,8 @@ Rules:
 - Add and maintain `.env.example` with field descriptions.
 - Backend startup should print enabled providers and model/endpoint IDs, but never print keys.
 - Missing keys should fail only the related real-provider request, not backend startup.
-- Model calls should go through a future `model-provider.service.js` abstraction.
+- Model calls should go through `model-provider.service.js`.
+- `AI_ASSET_ANALYSIS_PROVIDER=seed2` requires `ARK_API_KEY` and `SEED_ENDPOINT_ID`; missing values return a request-level error and write `analysisStatus=failed`.
 - Keep script generation, image generation, video generation, and multimodal analysis as separate provider domains.
 
 ## 7. Recommended Backend Structure
@@ -1449,7 +1470,7 @@ Backend default health check: `http://localhost:4000/api/health`.
 Before real model work continues, confirm these values in `.env`:
 
 - Which endpoint ID should be used for Seedance video generation: `SEEDANCE_ENDPOINT_ID`.
-- Which endpoint ID should be used for Seed 2.0 classification/script/analysis: prefer `SEED_CLASSIFICATION_ENDPOINT_ID`, keep `SEED_ENDPOINT_ID` as compatibility.
+- Seed 2.0 asset analysis uses `SEED_ENDPOINT_ID` for this account. Do not ask for a Seed 2.0 model name, `SEED2_MODEL`, or `SEED2_ENDPOINT_ID`.
 - Whether the account has Seedream access. Until confirmed, keep AI image generation disabled.
 - Whether generated videos should use model IDs or endpoint IDs. Current Ark errors indicate endpoint IDs are required for this account.
 
@@ -1715,8 +1736,14 @@ Phase 2 Owner 1 status: completed for the asset structuring/search/recall founda
 - POST /api/projects/:projectId/assets/recall supports downstream query fields and returns asset, matchedSlices, score, reason, and usageSuggestion.
 - Embedding query shapes are retained, but embedding search/recall returns a clear 501 until semantic search is implemented.
 - AI_ASSET_ANALYSIS_PROVIDER=mock|seed2 is wired through model-provider.service.js; mock remains default.
-- Seed 2.0 analysis has an explicit provider boundary and request-level errors. Raw provider calls are not placed in business services.
+- Seed 2.0 multimodal asset analysis is implemented through Volcengine Ark Responses API in `backend/src/providers/volcengine/seed2.client.js`.
+- Seed 2.0 uses only `ARK_API_KEY`, `ARK_BASE_URL`, and `SEED_ENDPOINT_ID` for this account. New code must not require `SEED2_MODEL` or `SEED2_ENDPOINT_ID`.
+- Seed 2.0 image analysis sends strict-JSON prompt text plus one `input_image`; video analysis sends strict-JSON prompt text plus representative frame `input_image` entries.
+- Video analysis samples representative frames with FFmpeg under `backend/uploads/derived/frames/<projectId>/<assetId>/`.
+- Seed 2.0 request failures are request-level failures and write structured `analysisError`; backend startup does not fail for missing Seed 2.0 env.
 - Frontend asset page now shows video metadata and slice thumbnails when available.
+- Frontend asset page displays `analysisError.message` when Seed 2.0 or mock analyze fails.
+- Backend node:test coverage includes Seed 2.0 payload/env/normalization, frame sampling, mock video analyze, search/recall regression, embedding 501, and delete cascade.
 
 ### Asset Contract After Owner 1 Phase 2
 
@@ -1790,8 +1817,6 @@ Recall response returns:
 
 ### Phase 2 Owner 1 TODO
 
-- Implement confirmed Seed 2.0 multimodal request format inside backend/src/providers/volcengine/seed2.client.js.
-- Add real representative-frame extraction for Seed 2.0 video analysis beyond slice thumbnail generation.
-- Add local JSON cosine similarity if embedding vectors become available.
-- Add automated backend tests for upload/analyze/search/recall/delete once the test harness is expanded.
+- Embedding search remains intentionally unimplemented and returns 501. Add local JSON cosine similarity only after embedding vectors are available.
 - Clean old local mock data if historical corrupted tags are visible; runtime JSON data should not be committed.
+- Owner 2 and Owner 3 Phase 2 work remains separate and is not marked complete by this Owner 1 update.

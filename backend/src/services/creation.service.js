@@ -15,7 +15,10 @@ async function retryCreationTask(projectId, taskId) {
   const task = await videoTask.retryTask(taskId);
   return task && task.projectId === projectId ? task : null;
 }
-async function cancelCreationTask() { const error = new Error('Creation task cancel is reserved for Phase 4.'); error.statusCode = 501; throw error; }
+async function cancelCreationTask(projectId, taskId) {
+  const task = await videoTask.cancelTask(taskId);
+  return task && task.projectId === projectId ? task : null;
+}
 async function listOutputs(projectId) {
   const dir = path.join(OUTPUTS_DIR, projectId);
   try {
