@@ -1,7 +1,15 @@
 node_modules/
+**/.npm-cache/
 frontend/node_modules/
 backend/node_modules/
 frontend/dist/
 backend/uploads/*
 !backend/uploads/.gitkeep
 .DS_Store
+.idea/
+.env
+backend/data/**/*.json
+.env
+backend/.env
+frontend/.env
+*.env

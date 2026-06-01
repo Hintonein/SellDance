@@ -3,105 +3,168 @@ const path = require('path');
 const {
   PROJECTS_DIR,
   ASSETS_DIR,
+  PROJECT_ASSET_LINKS_DIR,
   SCRIPTS_DIR,
   STORYBOARDS_DIR,
   TASKS_DIR,
+  ASSET_GENERATION_TASKS_FILE,
+  COMPLIANCE_REVIEWS_FILE,
+  DISTRIBUTION_EVENTS_FILE,
+  CONVERSION_EVENTS_FILE,
+  ASSET_SLICES_FILE,
+  TEMPLATES_FILE,
+  REFERENCE_VIDEOS_FILE,
+  EDITING_PLANS_FILE,
 } = require('../config/paths');
 const { ensureSafeId } = require('./id-validator.service');
 
-async function readProject(id) {
+async function parseJsonFile(filePath, fallback) {
   try {
-    const raw = await fs.readFile(path.join(PROJECTS_DIR, `${ensureSafeId(id)}.json`), 'utf8');
+    const raw = await fs.readFile(filePath, 'utf8');
+    if (!raw.trim()) return fallback;
     return JSON.parse(raw);
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
+    if (error.code === 'ENOENT') return fallback;
+    if (error instanceof SyntaxError) {
+      console.warn('[storage] Invalid JSON, returning fallback', { filePath, message: error.message });
+      return fallback;
+    }
     throw error;
   }
 }
 
+async function writeJsonFile(filePath, payload) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${Date.now()}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(payload, null, 2));
+  await fs.rename(tempPath, filePath);
+}
+
+async function readProject(id) {
+  return parseJsonFile(path.join(PROJECTS_DIR, `${ensureSafeId(id)}.json`), null);
+}
+
 async function writeProject(id, payload) {
-  await fs.mkdir(PROJECTS_DIR, { recursive: true });
-  await fs.writeFile(path.join(PROJECTS_DIR, `${ensureSafeId(id)}.json`), JSON.stringify(payload, null, 2));
+  await writeJsonFile(path.join(PROJECTS_DIR, `${ensureSafeId(id)}.json`), payload);
 }
 
 async function listProjects() {
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
   const files = await fs.readdir(PROJECTS_DIR);
-  const jsonFiles = files.filter((name) => name.endsWith('.json'));
   const records = await Promise.all(
-    jsonFiles.map(async (name) => JSON.parse(await fs.readFile(path.join(PROJECTS_DIR, name), 'utf8')))
+    files.filter((name) => name.endsWith('.json')).map((name) => parseJsonFile(path.join(PROJECTS_DIR, name), null))
   );
   return records.filter(Boolean);
 }
 
 async function readAssets(id, fallback = []) {
-  try {
-    const raw = await fs.readFile(path.join(ASSETS_DIR, `${ensureSafeId(id)}.json`), 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error.code === 'ENOENT') return fallback;
-    throw error;
-  }
+  return parseJsonFile(path.join(ASSETS_DIR, `${ensureSafeId(id)}.json`), fallback);
 }
 
 async function writeAssets(id, payload) {
-  await fs.mkdir(ASSETS_DIR, { recursive: true });
-  await fs.writeFile(path.join(ASSETS_DIR, `${ensureSafeId(id)}.json`), JSON.stringify(payload, null, 2));
+  await writeJsonFile(path.join(ASSETS_DIR, `${ensureSafeId(id)}.json`), payload);
+}
+
+async function readProjectAssetLinks(projectId, fallback = []) {
+  return parseJsonFile(path.join(PROJECT_ASSET_LINKS_DIR, `${ensureSafeId(projectId)}.json`), fallback);
+}
+
+async function writeProjectAssetLinks(projectId, payload) {
+  await writeJsonFile(path.join(PROJECT_ASSET_LINKS_DIR, `${ensureSafeId(projectId)}.json`), payload);
 }
 
 async function readScript(id) {
-  try {
-    const raw = await fs.readFile(path.join(SCRIPTS_DIR, `${ensureSafeId(id)}.json`), 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
+  return parseJsonFile(path.join(SCRIPTS_DIR, `${ensureSafeId(id)}.json`), null);
 }
 
 async function writeScript(id, payload) {
-  await fs.mkdir(SCRIPTS_DIR, { recursive: true });
-  await fs.writeFile(path.join(SCRIPTS_DIR, `${ensureSafeId(id)}.json`), JSON.stringify(payload, null, 2));
+  await writeJsonFile(path.join(SCRIPTS_DIR, `${ensureSafeId(id)}.json`), payload);
 }
 
 async function readStoryboard(id) {
-  try {
-    const raw = await fs.readFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`), 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
+  return parseJsonFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`), null);
 }
 
 async function writeStoryboard(id, payload) {
-  await fs.mkdir(STORYBOARDS_DIR, { recursive: true });
-  await fs.writeFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`), JSON.stringify(payload, null, 2));
+  await writeJsonFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`), payload);
 }
 
 async function readTask(id) {
-  try {
-    const raw = await fs.readFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`), 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
+  return parseJsonFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`), null);
 }
 
 async function writeTask(id, payload) {
-  await fs.mkdir(TASKS_DIR, { recursive: true });
-  await fs.writeFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`), JSON.stringify(payload, null, 2));
+  await writeJsonFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`), payload);
 }
 
 async function listTasks() {
   await fs.mkdir(TASKS_DIR, { recursive: true });
   const files = await fs.readdir(TASKS_DIR);
-  const jsonFiles = files.filter((name) => name.endsWith('.json'));
   const records = await Promise.all(
-    jsonFiles.map(async (name) => JSON.parse(await fs.readFile(path.join(TASKS_DIR, name), 'utf8')))
+    files.filter((name) => name.endsWith('.json')).map((name) => parseJsonFile(path.join(TASKS_DIR, name), null))
   );
   return records.filter(Boolean);
+}
+
+async function readJsonFile(filePath, fallback = []) {
+  return parseJsonFile(filePath, fallback);
+}
+
+
+async function listAssetSlices() {
+  return readJsonFile(ASSET_SLICES_FILE, []);
+}
+
+async function writeAssetSlices(slices) {
+  await writeJsonFile(ASSET_SLICES_FILE, slices);
+}
+
+async function listTemplates() {
+  return readJsonFile(TEMPLATES_FILE, []);
+}
+
+async function writeTemplates(templates) {
+  await writeJsonFile(TEMPLATES_FILE, templates);
+}
+
+async function listReferenceVideos() {
+  return readJsonFile(REFERENCE_VIDEOS_FILE, []);
+}
+
+async function writeReferenceVideos(videos) {
+  await writeJsonFile(REFERENCE_VIDEOS_FILE, videos);
+}
+
+async function listEditingPlans() {
+  return readJsonFile(EDITING_PLANS_FILE, []);
+}
+
+async function writeEditingPlans(plans) {
+  await writeJsonFile(EDITING_PLANS_FILE, plans);
+}
+
+async function listAssetGenerationTasks() {
+  return readJsonFile(ASSET_GENERATION_TASKS_FILE, []);
+}
+
+async function writeAssetGenerationTasks(tasks) {
+  await writeJsonFile(ASSET_GENERATION_TASKS_FILE, tasks);
+}
+
+async function listComplianceReviews() {
+  return readJsonFile(COMPLIANCE_REVIEWS_FILE, []);
+}
+
+async function writeComplianceReviews(reviews) {
+  await writeJsonFile(COMPLIANCE_REVIEWS_FILE, reviews);
+}
+
+async function writeDistributionEvents(events) {
+  await writeJsonFile(DISTRIBUTION_EVENTS_FILE, events);
+}
+
+async function writeConversionEvents(events) {
+  await writeJsonFile(CONVERSION_EVENTS_FILE, events);
 }
 
 module.exports = {
@@ -110,6 +173,8 @@ module.exports = {
   listProjects,
   readAssets,
   writeAssets,
+  readProjectAssetLinks,
+  writeProjectAssetLinks,
   readScript,
   writeScript,
   readStoryboard,
@@ -117,4 +182,20 @@ module.exports = {
   readTask,
   writeTask,
   listTasks,
+  readJsonFile,
+  writeJsonFile,
+  listAssetSlices,
+  writeAssetSlices,
+  listTemplates,
+  writeTemplates,
+  listReferenceVideos,
+  writeReferenceVideos,
+  listEditingPlans,
+  writeEditingPlans,
+  listAssetGenerationTasks,
+  writeAssetGenerationTasks,
+  listComplianceReviews,
+  writeComplianceReviews,
+  writeDistributionEvents,
+  writeConversionEvents,
 };

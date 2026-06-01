@@ -1,73 +1,58 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+import { projectsApi } from '../api/projects.api';
+import { assetsApi } from '../api/assets.api';
+import { materialsApi } from '../api/materials.compat.api';
+import { scriptsApi } from '../api/scripts.api';
+import { storyboardsApi } from '../api/storyboards.api';
+import { creationApi } from '../api/creation.api';
+import { generationTasksApi } from '../api/generationTasks.api';
+import { request } from '../api/http';
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
-  if (!response.ok) {
-    let message = `Request failed with ${response.status}`;
-    try {
-      const payload = await response.json();
-      message = payload.message || message;
-    } catch {
-      // no-op
-    }
-    throw new Error(message);
-  }
-  return response.json();
-}
+export { assetsApi, materialsApi, creationApi, generationTasksApi };
 
 export const api = {
-  listProjects: () => request('/projects'),
-  createProject: (payload) =>
-    request('/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  listMaterials: (projectId) => request(`/projects/${projectId}/materials`),
-  uploadMaterial: async (projectId, { file, type }) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', type);
-    return request(`/projects/${projectId}/materials`, {
-      method: 'POST',
-      body: formData,
-    });
-  },
-  getScript: (projectId) => request(`/projects/${projectId}/script`),
-  generateScript: (projectId, payload) =>
-    request(`/projects/${projectId}/script/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  saveScript: (projectId, scriptText) =>
-    request(`/projects/${projectId}/script`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scriptText }),
-    }),
-  getStoryboard: (projectId) => request(`/projects/${projectId}/storyboard`),
-  generateStoryboard: (projectId, scriptText) =>
-    request(`/projects/${projectId}/storyboard/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scriptText }),
-    }),
-  saveStoryboard: (projectId, scenes) =>
-    request(`/projects/${projectId}/storyboard`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scenes }),
-    }),
-  listTasks: (projectId) => request(`/projects/${projectId}/video-tasks`),
-  createTask: (projectId, options) =>
-    request(`/projects/${projectId}/video-tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options),
-    }),
-  retryTask: (taskId) =>
-    request(`/video-tasks/${taskId}/retry`, {
-      method: 'POST',
-    }),
+  listProjects: projectsApi.list,
+  createProject: projectsApi.create,
+  updateProject: projectsApi.update,
+  archiveProject: projectsApi.archive,
+  listAssets: assetsApi.list,
+  listGlobalAssets: assetsApi.listGlobal,
+  getGlobalAsset: assetsApi.getGlobal,
+  getGlobalAssetSlices: assetsApi.getGlobalSlices,
+  getAsset: assetsApi.get,
+  uploadAsset: assetsApi.upload,
+  updateAsset: assetsApi.update,
+  deleteAsset: assetsApi.remove,
+  linkAssetToProject: assetsApi.link,
+  unlinkAssetFromProject: assetsApi.unlink,
+  deleteGlobalAsset: assetsApi.removeGlobal,
+  searchAssets: assetsApi.search,
+  recallAssets: assetsApi.recall,
+  analyzeAsset: assetsApi.analyze,
+  getAssetSlices: assetsApi.getSlices,
+  listMaterials: materialsApi.list,
+  uploadMaterial: assetsApi.upload,
+  generateAsset: (projectId, payload) => request(`/projects/${projectId}/assets/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  getAssetGenerationTask: (projectId, taskId) => request(`/projects/${projectId}/assets/generation-tasks/${taskId}`),
+  reanalyzeAsset: assetsApi.analyze,
+  getScript: scriptsApi.getCurrent,
+  listScripts: scriptsApi.list,
+  generateScript: scriptsApi.generate,
+  saveScript: scriptsApi.save,
+  refineScript: scriptsApi.refine,
+  regenerateScript: scriptsApi.regenerate,
+  regenerateScriptScene: scriptsApi.regenerateScene,
+  getStoryboard: storyboardsApi.getCurrent,
+  generateStoryboard: storyboardsApi.generate,
+  saveStoryboard: storyboardsApi.save,
+  updateStoryboardScene: storyboardsApi.updateScene,
+  regenerateStoryboardScene: storyboardsApi.regenerateScene,
+  createEditingPlan: creationApi.createPlan,
+  renderCreation: creationApi.render,
+  listCreationTasks: creationApi.listTasks,
+  getCreationTask: creationApi.getTask,
+  retryCreationTask: creationApi.retryTask,
+  cancelCreationTask: creationApi.cancelTask,
+  listTasks: generationTasksApi.list,
+  createTask: generationTasksApi.create,
+  retryTask: generationTasksApi.retry,
 };

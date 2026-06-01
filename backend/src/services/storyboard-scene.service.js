@@ -21,15 +21,28 @@ function normalizeScene(scene = {}, index = 0) {
   const selectedAssetIds = normalizeSelectedAssetIds(scene.selectedAssetIds ?? scene.selectedAssetId);
   const layout = String(scene.layout || 'cover').trim() || 'cover';
   const transition = String(scene.transition || 'cut').trim() || 'cut';
+  const cameraMotion = String(scene.cameraMotion || 'push-in').trim() || 'push-in';
+  const visualDescription = String(scene.visualDescription || scene.scriptText || '').trim();
+  const bgmHint = String(scene.bgmHint || scene.backgroundMusicPlaceholder || 'upbeat commerce bed').trim();
 
   return {
+    sceneId: scene.sceneId || scene.id || `scene-${sceneOrder}`,
     sceneOrder,
+    sceneIndex: sceneOrder,
     durationSeconds,
+    duration: durationSeconds,
     scriptText,
+    narration: scriptText,
     subtitleText,
+    subtitle: subtitleText,
+    visualDescription,
+    cameraMotion,
     selectedAssetIds,
+    assetRefs: selectedAssetIds,
     layout,
     transition,
+    bgmHint,
+    status: scene.status || 'ready',
   };
 }
 

@@ -1,30 +1,60 @@
-const { v4: uuidv4 } = require('uuid');
-const { readAssets, writeAssets } = require('./storage.service');
+const {
+  listAllAssets,
+  listAssets,
+  createAssetFromUpload,
+  appendAsset,
+  getAsset,
+  updateAsset,
+  deleteAsset,
+  analyzeAsset,
+  getAssetSlices,
+  searchProjectAssets,
+  normalizeLegacyAssetType,
+} = require('./asset.service');
+const { buildMockAnalysis } = require('./asset-analysis.service');
 
-async function listMaterials(projectId) {
-  return (await readAssets(projectId, [])) || [];
+async function listMaterials(projectId, query) {
+  if (query && Object.keys(query).length > 0) {
+    return listAssets(projectId, query);
+  }
+  return listAllAssets(projectId);
 }
 
-async function saveMaterial(projectId, file, type) {
-  const existing = await listMaterials(projectId);
-  const asset = {
-    id: uuidv4(),
-    projectId,
-    type: type || 'reference',
-    originalName: file.originalname,
-    filename: file.filename,
-    storagePath: `uploads/${file.filename}`,
-    fileUrl: `/uploads/${file.filename}`,
-    mimeType: file.mimetype,
-    size: file.size,
-    uploadedAt: new Date().toISOString(),
-  };
-  const next = [asset, ...existing];
-  await writeAssets(projectId, next);
-  return asset;
+async function saveMaterial(projectId, file, typeOrPayload) {
+  const payload = typeof typeOrPayload === 'object' && typeOrPayload !== null ? typeOrPayload : { type: typeOrPayload };
+  return createAssetFromUpload(projectId, file, payload);
+}
+
+async function getMaterial(projectId, assetId) {
+  return getAsset(projectId, assetId);
+}
+
+async function deleteMaterial(projectId, assetId) {
+  return deleteAsset(projectId, assetId);
+}
+
+async function appendMaterial(projectId, asset) {
+  return appendAsset(projectId, asset);
+}
+
+async function updateMaterial(projectId, assetId, payload) {
+  return updateAsset(projectId, assetId, payload);
+}
+
+async function reanalyzeMaterial(projectId, assetId) {
+  return analyzeAsset(projectId, assetId);
 }
 
 module.exports = {
   listMaterials,
   saveMaterial,
+  getMaterial,
+  deleteMaterial,
+  appendMaterial,
+  updateMaterial,
+  reanalyzeMaterial,
+  getAssetSlices,
+  searchProjectAssets,
+  buildMockAnalysis,
+  normalizeAssetType: normalizeLegacyAssetType,
 };

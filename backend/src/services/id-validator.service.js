@@ -1,4 +1,4 @@
-const SAFE_ID_PATTERN = /^[a-zA-Z0-9-]{1,64}$/;
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function ensureSafeId(value) {
   if (!SAFE_ID_PATTERN.test(value || '')) {

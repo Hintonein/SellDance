@@ -1,0 +1,27 @@
+const router = require('express').Router();
+const { listProjects, createProject, getProject, updateProject, archiveProject } = require('../services/project.service');
+const { getScript, saveScript, generateAndSaveScript } = require('../services/script.service');
+const { getStoryboard, saveStoryboard, generateAndSaveStoryboard } = require('../services/storyboard.service');
+const videoTask = require('../services/video-task.service');
+router.get('/', async (_req, res) => res.json(await listProjects()));
+router.post('/', async (req, res) => {
+  if (!req.body.name && !req.body.projectName && !req.body.productName) return res.status(400).json({ message: 'Project name is required.' });
+  res.status(201).json(await createProject(req.body));
+});
+router.get('/:projectId', async (req, res) => { const project = await getProject(req.params.projectId); if (!project) return res.status(404).json({ message: 'Project not found.' }); res.json(project); });
+router.patch('/:projectId', async (req, res) => { const project = await updateProject(req.params.projectId, req.body || {}); if (!project) return res.status(404).json({ message: 'Project not found.' }); res.json(project); });
+router.delete('/:projectId', async (req, res) => { const project = await archiveProject(req.params.projectId); if (!project) return res.status(404).json({ message: 'Project not found.' }); res.json(project); });
+// Legacy singular script/storyboard and video-task routes used by the current frontend.
+router.get('/:projectId/script', async (req, res) => res.json((await getScript(req.params.projectId)) || {}));
+router.post('/:projectId/script/generate', async (req, res) => res.status(201).json(await generateAndSaveScript(req.params.projectId, req.body || {})));
+router.put('/:projectId/script', async (req, res) => { if (!req.body.scriptText && !req.body.scenes) return res.status(400).json({ message: 'scriptText or scenes are required.' }); res.json(await saveScript(req.params.projectId, req.body.scenes ? req.body : req.body.scriptText, { source: 'manual' })); });
+router.get('/:projectId/storyboard', async (req, res) => res.json((await getStoryboard(req.params.projectId)) || { scenes: [] }));
+router.post('/:projectId/storyboard/generate', async (req, res) => { if (!req.body.scriptText && !req.body.scriptId && !req.body.scenes) return res.status(400).json({ message: 'scriptText, scriptId, or scenes are required.' }); res.status(201).json(await generateAndSaveStoryboard(req.params.projectId, { ...req.body, scriptText: req.body.scriptText || req.body.text })); });
+router.put('/:projectId/storyboard', async (req, res) => { if (!Array.isArray(req.body.scenes)) return res.status(400).json({ message: 'scenes must be an array.' }); res.json(await saveStoryboard(req.params.projectId, req.body.scenes, 'manual')); });
+router.get('/:projectId/video-tasks', async (req, res) => res.json(await videoTask.listTasks(req.params.projectId)));
+router.post('/:projectId/video-tasks', async (req, res) => res.status(201).json(await videoTask.createTask(req.params.projectId, req.body || {})));
+router.get('/:projectId/tasks', async (req, res) => res.json(await videoTask.listTasks(req.params.projectId)));
+router.post('/:projectId/tasks', async (req, res) => res.status(201).json(await videoTask.createTask(req.params.projectId, req.body || {})));
+router.get('/:projectId/tasks/:taskId', async (req, res) => { const task = await videoTask.getTask(req.params.taskId); if (!task || task.projectId !== req.params.projectId) return res.status(404).json({ message: 'Task not found.' }); res.json(task); });
+router.post('/:projectId/tasks/:taskId/retry', async (req, res) => { const task = await videoTask.retryTask(req.params.taskId); if (!task || task.projectId !== req.params.projectId) return res.status(404).json({ message: 'Task not found.' }); res.json(task); });
+module.exports = router;
