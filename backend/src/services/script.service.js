@@ -8,6 +8,7 @@ const SCENE_ROLES = [
   'selling_point',
   'comparison',
   'cta',
+  'transition',
 ];
 
 function now() {
@@ -110,6 +111,16 @@ function roleDefaults(role, productInfo, point, input = {}) {
       voiceover: `Tap the product card and get ${title} today.`,
       subtitle: '点击购买 立即入手',
       bgm: 'short CTA sting',
+    },
+    transition: {
+      duration: 1.5,
+      sellingPoint: fallbackPoint,
+      narrativeGoal: 'Bridge two selling moments without changing the product promise.',
+      visualDescription: `Short transition cutaway for ${title}, using motion or product detail to connect scenes.`,
+      cameraMovement: 'quick whip pan or detail cut',
+      voiceover: '',
+      subtitle: '',
+      bgm: 'short transition hit',
     },
   };
   return { ...rows[role], style };

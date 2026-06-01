@@ -1,5 +1,9 @@
 import { request, toQuery } from './http';
 export const assetsApi = {
+  listGlobal: (params = {}) => request(`/assets${toQuery(params)}`),
+  getGlobal: (assetId) => request(`/assets/${assetId}`),
+  getGlobalSlices: (assetId) => request(`/assets/${assetId}/slices`),
+  removeGlobal: (assetId) => request(`/assets/${assetId}`, { method: 'DELETE' }),
   list: (projectId, params = {}) => request(`/projects/${projectId}/assets${toQuery(params)}`),
   get: (projectId, assetId) => request(`/projects/${projectId}/assets/${assetId}`),
   upload: async (projectId, { file, title, type, source, tags, metadata, description }) => {
@@ -14,7 +18,9 @@ export const assetsApi = {
     return request(`/projects/${projectId}/assets`, { method: 'POST', body: formData });
   },
   update: (projectId, assetId, payload) => request(`/projects/${projectId}/assets/${assetId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
-  remove: (projectId, assetId) => request(`/projects/${projectId}/assets/${assetId}`, { method: 'DELETE' }),
+  remove: (projectId, assetId, options = {}) => request(`/projects/${projectId}/assets/${assetId}${options.deleteGlobal ? '?deleteGlobal=true' : ''}`, { method: 'DELETE' }),
+  link: (projectId, assetId, payload = {}) => request(`/projects/${projectId}/assets/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, assetId }) }),
+  unlink: (projectId, assetId) => request(`/projects/${projectId}/assets/${assetId}/link`, { method: 'DELETE' }),
   search: (projectId, payload) => request(`/projects/${projectId}/assets/search`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   recall: (projectId, payload) => request(`/projects/${projectId}/assets/recall`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   analyze: (projectId, assetId) => request(`/projects/${projectId}/assets/${assetId}/analyze`, { method: 'POST' }),

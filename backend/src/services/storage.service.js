@@ -3,6 +3,7 @@ const path = require('path');
 const {
   PROJECTS_DIR,
   ASSETS_DIR,
+  PROJECT_ASSET_LINKS_DIR,
   SCRIPTS_DIR,
   STORYBOARDS_DIR,
   TASKS_DIR,
@@ -62,6 +63,14 @@ async function readAssets(id, fallback = []) {
 
 async function writeAssets(id, payload) {
   await writeJsonFile(path.join(ASSETS_DIR, `${ensureSafeId(id)}.json`), payload);
+}
+
+async function readProjectAssetLinks(projectId, fallback = []) {
+  return parseJsonFile(path.join(PROJECT_ASSET_LINKS_DIR, `${ensureSafeId(projectId)}.json`), fallback);
+}
+
+async function writeProjectAssetLinks(projectId, payload) {
+  await writeJsonFile(path.join(PROJECT_ASSET_LINKS_DIR, `${ensureSafeId(projectId)}.json`), payload);
 }
 
 async function readScript(id) {
@@ -164,6 +173,8 @@ module.exports = {
   listProjects,
   readAssets,
   writeAssets,
+  readProjectAssetLinks,
+  writeProjectAssetLinks,
   readScript,
   writeScript,
   readStoryboard,

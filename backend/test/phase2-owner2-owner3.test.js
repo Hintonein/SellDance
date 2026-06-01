@@ -20,11 +20,12 @@ const {
   UPLOADS_DIR,
   OUTPUTS_DIR,
 } = require('../src/config/paths');
-const { appendAsset } = require('../src/services/asset.service');
+const { appendAsset, normalizeAsset } = require('../src/services/asset.service');
 const { createSlice } = require('../src/services/asset-slice.service');
 const { createEditingPlan } = require('../src/services/creation-planning.service');
 const { createReferenceVideo, analyzeReferenceVideo } = require('../src/services/reference-video.service');
 const { mineTemplate } = require('../src/services/template.service');
+const { curateTags } = require('../src/services/asset-tag.service');
 const modelProvider = require('../src/services/model-provider.service');
 const videoTask = require('../src/services/video-task.service');
 
@@ -177,6 +178,15 @@ test('Phase 2 Owner 2 APIs generate structured scripts and storyboards with reca
     });
     assert.equal(regenerated.scenes[0].sceneRole, 'hook');
 
+    const transitionScript = await jsonFetch(baseUrl, `/projects/${projectId}/scripts/${script.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...regenerated,
+        scenes: [{ ...regenerated.scenes[0], sceneRole: 'transition', duration: 1.5 }],
+      }),
+    });
+    assert.equal(transitionScript.scenes[0].sceneRole, 'transition');
+
     const storyboard = await jsonFetch(baseUrl, `/projects/${projectId}/storyboards/generate`, {
       method: 'POST',
       body: JSON.stringify({ scriptId: script.id, scenes: regenerated.scenes }),
@@ -192,6 +202,13 @@ test('Phase 2 Owner 2 APIs generate structured scripts and storyboards with reca
     });
     assert.equal(patched.scenes[0].subtitle, 'Updated subtitle');
     assert.deepEqual(patched.scenes[0].selectedAssetIds, ['asset_closeup']);
+    await assert.rejects(
+      () => jsonFetch(baseUrl, `/projects/${projectId}/storyboards/${storyboard.id}/scenes/not-a-scene`, {
+        method: 'PATCH',
+        body: JSON.stringify({ subtitle: 'Should fail' }),
+      }),
+      (error) => error.status === 404,
+    );
   });
 
   const emptyProjectId = `${projectId}-empty`;
@@ -268,6 +285,33 @@ test('Phase 3 Owner 2 MVP keeps reference/template/script providers behind servi
       }
     }
   }
+});
+
+test('asset tags are ordered by business importance and low-value generation labels are dropped', () => {
+  const tags = curateTags([
+    'AI生成',
+    '商品展示',
+    '电商短视频',
+    '功能饮料',
+    '棚拍产品视频',
+    '提神饮品',
+    'TikTok Shop带货',
+    '竖屏短平快素材',
+  ]);
+  assert.deepEqual(tags.slice(0, 3), ['functional_drink', 'energy_drink', 'studio_product_video']);
+  assert.ok(!tags.includes('ai_generated'));
+  assert.ok(!tags.includes('product_showcase'));
+  assert.ok(tags.length <= 10);
+
+  const normalizedAsset = normalizeAsset('tag-project', {
+    id: 'asset_tags',
+    type: 'video',
+    mediaType: 'video',
+    source: 'ai',
+    analysis: { tags: ['AI生成', '商品展示', '功能饮料', '提神饮品'] },
+  });
+  assert.deepEqual(normalizedAsset.analysis.tags.slice(0, 2), ['functional_drink', 'energy_drink']);
+  assert.ok(!normalizedAsset.analysis.tags.includes('ai_generated'));
 });
 
 test('Phase 2 Owner 3 creates asset-first EditingPlan, validates project ownership, and supports task lifecycle', async () => {

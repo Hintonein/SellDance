@@ -1,7 +1,7 @@
 const DEFAULT_SEEDANCE_MODEL = process.env.SEEDANCE_MODEL || 'seedance-1.5-pro';
 const DEFAULT_SEEDREAM_MODEL = process.env.SEEDREAM_MODEL || 'doubao-seedream-4.0';
 const DEFAULT_ARK_BASE_URL = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com';
-const DEFAULT_POLL_ATTEMPTS = Number(process.env.ARK_POLL_ATTEMPTS || 24);
+const DEFAULT_POLL_ATTEMPTS = Number(process.env.ARK_POLL_ATTEMPTS || 120);
 const DEFAULT_POLL_INTERVAL_MS = Number(process.env.ARK_POLL_INTERVAL_MS || 5000);
 
 function hasArkApiKey() {
@@ -9,7 +9,7 @@ function hasArkApiKey() {
 }
 
 function getSeedClassifierEndpointId() {
-  return process.env.SEED_CLASSIFICATION_ENDPOINT_ID || process.env.SEED_ENDPOINT_ID || process.env.SEED_MODEL || '';
+  return process.env.SEED_ENDPOINT_ID || process.env.SEED_CLASSIFICATION_ENDPOINT_ID || process.env.SEED_MODEL || '';
 }
 
 function extractRemoteUrl(payload) {
@@ -149,6 +149,7 @@ async function classifyPromptWithSeed({ prompt, project = {}, assetType, ratio, 
               colors: ['主色'],
               tags: ['标签'],
               riskTags: ['合规风险标签'],
+              assetName: '素材名称，用商品/场景/风格命名，不要使用 AI生成素材 这类泛称',
               summary: '素材摘要',
               enhancedPrompt: '给 seedance 文生视频使用的增强 prompt',
             },
@@ -207,20 +208,44 @@ async function waitForArkVideoUrl(taskId) {
     }
     await sleep(DEFAULT_POLL_INTERVAL_MS);
   }
-  throw new Error(`Volcengine Ark generation task ${taskId} did not finish before polling timeout. Last payload: ${JSON.stringify(lastPayload)}`);
+  const timeoutSeconds = Math.round((DEFAULT_POLL_ATTEMPTS * DEFAULT_POLL_INTERVAL_MS) / 1000);
+  const error = new Error(`Volcengine Ark generation task ${taskId} was still running after ${timeoutSeconds}s of local polling. This usually means the remote Seedance task is still queued/generating, not that the request failed. Last payload: ${JSON.stringify(lastPayload)}`);
+  error.code = 'ARK_GENERATION_POLL_TIMEOUT';
+  error.statusCode = 504;
+  error.taskId = taskId;
+  error.lastPayload = lastPayload;
+  throw error;
 }
 
-async function generateVideoWithSeedance({ prompt, durationSec = 5, ratio = '9:16', model = DEFAULT_SEEDANCE_MODEL }) {
+function normalizeReferenceImages(referenceImages = []) {
+  return (Array.isArray(referenceImages) ? referenceImages : [])
+    .map((item) => ({
+      role: item.role || 'reference',
+      url: item.url || item.dataUrl || item.imageUrl,
+    }))
+    .filter((item) => item.url)
+    .slice(0, 2);
+}
+
+async function generateVideoWithSeedance({ prompt, durationSec = 5, ratio = '9:16', model = DEFAULT_SEEDANCE_MODEL, referenceImages = [] }) {
+  const normalizedReferenceImages = normalizeReferenceImages(referenceImages);
   if (process.env.ARK_MOCK_REMOTE_URL) {
-    return { remoteUrl: process.env.ARK_MOCK_REMOTE_URL, model, raw: { mocked: true } };
+    return { remoteUrl: process.env.ARK_MOCK_REMOTE_URL, model, raw: { mocked: true, referenceImages: normalizedReferenceImages.length } };
   }
+  const referenceHint = normalizedReferenceImages.length
+    ? ` Reference images: ${normalizedReferenceImages.map((item) => item.role).join(', ')}. Use first_frame as the opening frame and last_frame as the ending frame when provided.`
+    : '';
   const payload = {
     model,
     content: [
       {
         type: 'text',
-        text: `${prompt} --ratio ${ratio} --duration ${durationSec}`,
+        text: `${prompt}${referenceHint} --ratio ${ratio} --duration ${durationSec}`,
       },
+      ...normalizedReferenceImages.map((item) => ({
+        type: 'image_url',
+        image_url: { url: item.url },
+      })),
     ],
   };
   const data = await postArkGeneration(payload);
@@ -258,13 +283,14 @@ async function generateImageWithSeedream({ prompt, ratio = '1:1', model = DEFAUL
   return { remoteUrl, model, raw: data };
 }
 
-async function generateAssetWithVolcengine({ mediaType, prompt, durationSec, ratio, model }) {
+async function generateAssetWithVolcengine({ mediaType, prompt, durationSec, ratio, model, referenceImages }) {
   if (mediaType === 'video') {
     return generateVideoWithSeedance({
       prompt,
       durationSec,
       ratio,
       model: model || DEFAULT_SEEDANCE_MODEL,
+      referenceImages,
     });
   }
   return generateImageWithSeedream({

@@ -208,10 +208,13 @@ async function generateStoryboard(projectId, payload = {}) {
 async function updateScene(projectId, storyboardId, sceneId, payload = {}) {
   const storyboard = await getStoryboard(projectId);
   if (!storyboard || (storyboardId && ![storyboard.id, storyboard.storyboardId].includes(storyboardId))) return null;
+  let matched = false;
   const scenes = storyboard.scenes.map((scene, index) => {
     const matches = scene.id === sceneId || scene.sceneId === sceneId || String(scene.order) === String(sceneId) || String(scene.sceneOrder) === String(sceneId);
+    if (matches) matched = true;
     return matches ? normalizeStoryboardScene({ ...scene, ...payload }, storyboard.id, storyboard.scriptId, index) : scene;
   });
+  if (!matched) return null;
   return saveStoryboard(projectId, { ...storyboard, scenes }, 'manual-scene-edit');
 }
 

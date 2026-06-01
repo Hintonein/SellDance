@@ -25,18 +25,19 @@ export default function VideoWorkflowPage({
   const toggleAsset = (assetId) => {
     setSelectedAssetIds((prev) => prev.includes(assetId) ? prev.filter((id) => id !== assetId) : [...prev, assetId]);
   };
+  const sceneDuration = (scene) => scene.duration || scene.durationSeconds || 3;
+  const sceneText = (scene) => scene.subtitle || scene.subtitleText || scene.voiceover || scene.scriptText || scene.visualDescription || 'Storyboard scene';
 
   return (
     <PageShell
-      title="Video preview & generation"
-      description="Generate real MP4 output, track rendering progress, then preview and download the result."
+      title="Creation"
+      description="Create an editing plan, render a preview, and export platform-ready selling videos."
     >
-      <div className="workflow-steps">
-        {['素材准备', '脚本生成', '分镜生成', '智能剪辑', '生成结果'].map((step, index) => (
-          <span className={index <= (latestTask ? 4 : scenes.length ? 3 : 2) ? 'step-pill active' : 'step-pill'} key={step}>
-            {index + 1}. {step}
-          </span>
-        ))}
+      <div className="strategy-grid">
+        <section className="card section-card"><h3>一键成片</h3><p>Use product link, main image, or selected assets to produce a short commerce video.</p></section>
+        <section className="card section-card"><h3>智能剪辑</h3><p>Assemble clips, transitions, subtitles, voiceover, and BGM from asset/slice tags and storyboard scenes.</p></section>
+        <section className="card section-card"><h3>分镜级干预</h3><p>Replace slices, adjust duration, regenerate a single scene, then render quickly.</p></section>
+        <section className="card section-card"><h3>预览与导出</h3><p>Preview online and export vertical or horizontal variants for distribution.</p></section>
       </div>
 
       <div className="card form section-card">
@@ -132,9 +133,9 @@ export default function VideoWorkflowPage({
         </div>
         <ol className="flow-list">
           {scenes.map((scene, index) => (
-            <li key={scene.sceneOrder || index}>
-              <strong>Scene {scene.sceneOrder || index + 1}</strong> · {scene.durationSeconds}s ·{' '}
-              {scene.subtitleText || scene.scriptText}
+            <li key={scene.id || scene.sceneId || scene.sceneOrder || index}>
+              <strong>Scene {scene.sceneOrder || index + 1}</strong> · {sceneDuration(scene)}s ·{' '}
+              {sceneText(scene)}
             </li>
           ))}
           {scenes.length === 0 ? <li>No storyboard scenes available.</li> : null}

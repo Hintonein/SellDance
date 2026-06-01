@@ -5,7 +5,7 @@
 SellDance is a runnable prototype for e-commerce AIGC short-video generation. The current code covers the P0 flow and the Phase 2 structured creation foundation:
 
 ```text
-Project -> Asset upload / AI video asset generation -> Structured script -> Storyboard + Asset Recall -> EditingPlan -> FFmpeg render task -> Preview / export
+Project -> choose/upload/generate assets from shared Asset Pool -> Structured script -> Storyboard + project-linked Asset Recall -> EditingPlan -> FFmpeg render task -> Preview / export
 ```
 
 The implementation is intentionally lightweight and file-based. It is useful for demo validation, but several domains are still mock, mixed in naming, or concentrated in oversized files.
@@ -46,10 +46,10 @@ Current backend layering exists but is partial:
 | Area | Status | Notes |
 | --- | --- | --- |
 | Project create/list/detail/update/archive | Done | `DELETE /api/projects/:projectId` marks archived. IDs now allow hyphen/underscore. |
-| Material/asset upload | Done | `/materials` and `/assets` both upload with `multer`; metadata stored in `backend/data/assets/<projectId>.json`. |
+| Material/asset upload | Done | `/materials` and `/projects/:projectId/assets` remain compatible, but new storage writes asset records to a shared global pool and creates project asset links. |
 | Asset list/detail/delete | Done | Delete supports `id` and `assetId`; local `/uploads/...` file deletion is best-effort. |
 | Asset structured analysis | Done for Phase 2 | Mock is default. Seed 2.0 asset analysis is behind `model-provider.service.js` and provider clients, with request-level failures. |
-| Asset search / recall | Done for Phase 2 | Keyword/tag rule-based search and recall return assets, matched slices, score, reason, and usage suggestion. Vector search returns clear 501. |
+| Asset search / recall | Done for Phase 2 | Keyword/tag rule-based search and recall return assets, matched slices, score, reason, and usage suggestion. Project recall only sees assets linked into the current project. Vector search returns clear 501. |
 | AI-generated assets | Half done | Only Seedance text-to-video is enabled. Async task + polling exists. Seedream image generation is disabled in UI/business flow. |
 | Compliance review | Half done | AI-generated assets create review records in `backend/data/compliance-reviews.json`; no UI/review workflow yet. |
 | Script generation | Done for Phase 2 / MVP Phase 3 | Mock structured Script JSON is default. Agent/model-provider boundaries exist for Seed 2.0 script generation, with missing env as request-level error. |
@@ -80,6 +80,8 @@ All routes currently live in `backend/src/routes/api.js`.
 - `POST /api/projects/:projectId/materials`
 - `GET /api/projects/:projectId/assets`
 - `POST /api/projects/:projectId/assets`
+- `POST /api/projects/:projectId/assets/link`
+- `DELETE /api/projects/:projectId/assets/:assetId/link`
 - `GET /api/projects/:projectId/assets/:assetId`
 - `DELETE /api/projects/:projectId/assets/:assetId`
 - `POST /api/projects/:projectId/assets/:assetId/reanalyze`
@@ -89,6 +91,8 @@ All routes currently live in `backend/src/routes/api.js`.
 Notes:
 
 - `/materials` is legacy naming and should remain compatible until the UI and docs fully migrate to `/assets`.
+- `GET /api/assets`, `GET /api/assets/:assetId`, and `DELETE /api/assets/:assetId` expose the shared global asset pool.
+- Project asset routes now represent the current project's selected asset links. Uploading through a project creates a global asset and links it to that project. Deleting from a project can either unlink only or delete the global asset when explicitly requested.
 - AI image generation is intentionally not exposed now.
 
 ### Existing Script Routes
@@ -156,7 +160,9 @@ Persistence is local JSON:
 
 ```text
 backend/data/projects/<projectId>.json
-backend/data/assets/<projectId>.json
+backend/data/assets/global.json
+backend/data/assets/<projectId>.json           # legacy files, lazily migrated when a project is opened
+backend/data/project-assets/<projectId>.json   # links from project -> global asset ids
 backend/data/scripts/<projectId>.json
 backend/data/storyboards/<projectId>.json
 backend/data/generation-tasks/<taskId>.json
@@ -216,7 +222,7 @@ AI_SCRIPT_PROVIDER=mock
 AI_ASSET_ANALYSIS_PROVIDER=mock
 AI_VIDEO_PROVIDER=seedance
 AI_IMAGE_PROVIDER=disabled
-ARK_POLL_ATTEMPTS=24
+ARK_POLL_ATTEMPTS=120
 ARK_POLL_INTERVAL_MS=5000
 ```
 

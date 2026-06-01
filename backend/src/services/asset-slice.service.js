@@ -56,7 +56,7 @@ function applySliceFilters(items, filters = {}) {
 
 async function listSlices(projectId, assetId, filters = {}) {
   const rows = (await allSlices()).map((s, i) => normalizeSlice(s.projectId, s.assetId, s, i));
-  let items = rows.filter((s) => s.projectId === projectId && s.assetId === assetId);
+  let items = rows.filter((s) => (s.projectId === projectId || s.projectId === 'global') && s.assetId === assetId);
   items = applySliceFilters(items, filters);
   return { items: items.sort((a, b) => a.index - b.index), total: items.length };
 }
@@ -114,8 +114,12 @@ async function deleteSlicesByAsset(projectId, assetId) {
 
 async function searchSlices(projectId, query = {}) {
   const rows = (await allSlices()).map((s, i) => normalizeSlice(s.projectId, s.assetId, s, i));
-  let items = rows.filter((s) => s.projectId === projectId);
+  let items = rows.filter((s) => s.projectId === projectId || s.projectId === 'global');
   if (query.assetId) items = items.filter((s) => s.assetId === query.assetId);
+  if (Array.isArray(query.assetIds) && query.assetIds.length) {
+    const ids = new Set(query.assetIds);
+    items = items.filter((s) => ids.has(s.assetId));
+  }
   items = applySliceFilters(items, query);
   return { items, total: items.length };
 }

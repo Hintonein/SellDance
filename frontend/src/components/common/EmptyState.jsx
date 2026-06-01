@@ -1,1 +1,1 @@
-export default function EmptyState({ children }) { return <p className="card">{children}</p>; }
+export default function EmptyState({ children }) { return <p className="card empty-state">{children}</p>; }

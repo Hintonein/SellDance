@@ -28,18 +28,33 @@ export default function ScriptPage({
   const generate = async () => {
     await onGenerate({
       ...input,
-        sellingPoints: input.sellingPoints
-        .split(',')
+      sellingPoints: input.sellingPoints
+        .split(/[,，]/)
         .map((item) => item.trim())
-            .filter(Boolean),
+        .filter(Boolean),
     });
   };
 
   return (
     <PageShell
-      title="Script editing"
-      description="Generate and edit short-form selling scripts with target audience and style controls."
+      title="Script studio"
+      description="Find references, mine creative methods, and generate structured selling scripts for this project."
     >
+      <div className="strategy-grid">
+        <section className="card section-card">
+          <h3>1. 优质视频库</h3>
+          <p>Search or upload reference videos, then save only structured analysis: hook, selling points, storyboard, style, BGM, subtitles, and source declaration.</p>
+        </section>
+        <section className="card section-card">
+          <h3>2. 方法论提炼</h3>
+          <p>Cluster similar winning videos into inspiration templates with strategy, factors, and platform/compliance constraints.</p>
+        </section>
+        <section className="card section-card">
+          <h3>3. 剧本生成</h3>
+          <p>Combine product info, strategy, factors, and constraints into editable structured scenes.</p>
+        </section>
+      </div>
+
       <div className="card form section-card">
         <div className="section-heading">
           <div>

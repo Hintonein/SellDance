@@ -8,6 +8,7 @@ async function listProjects() {
 
 async function createProject(payload) {
   const now = new Date().toISOString();
+  const id = uuidv4();
   const sellingPoints = Array.isArray(payload.sellingPoints)
     ? payload.sellingPoints
     : String(payload.sellingPoints || payload.description || '')
@@ -15,8 +16,8 @@ async function createProject(payload) {
         .map((item) => item.trim())
         .filter(Boolean);
   const project = {
-    id: uuidv4(),
-    projectId: uuidv4(),
+    id,
+    projectId: id,
     name: payload.name || payload.projectName || payload.productName,
     projectName: payload.projectName || payload.name || payload.productName,
     productName: payload.productName || payload.name || payload.projectName,

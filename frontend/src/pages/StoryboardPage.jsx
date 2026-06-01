@@ -17,10 +17,12 @@ export default function StoryboardPage({
   onSceneSave,
   onSceneRegenerate,
 }) {
+  const storyboardId = storyboard?.id || storyboard?.storyboardId;
+
   return (
     <PageShell
-      title="Storyboard editing"
-      description="Edit scene duration/subtitles and manually assign uploaded assets to each scene."
+      title="Storyboard"
+      description="Generate visual scenes from script, review the timeline, and refresh individual scenes without rerendering the whole video."
     >
       <div className="card action-card">
         <button
@@ -35,9 +37,24 @@ export default function StoryboardPage({
         </button>
       </div>
 
+      <div className="timeline-strip">
+        {scenes.map((scene, index) => (
+          <button
+            type="button"
+            key={scene.id || scene.sceneId || index}
+            className="timeline-scene"
+            style={{ flexGrow: Math.max(1, Number(scene.duration || scene.durationSeconds || 3)) }}
+            onClick={() => document.getElementById(`scene-${scene.id || scene.sceneId || index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+          >
+            <strong>{index + 1}</strong>
+            <span>{scene.duration || scene.durationSeconds || 3}s</span>
+          </button>
+        ))}
+      </div>
+
       <div className="scene-grid">
         {scenes.map((scene, index) => (
-          <article key={scene.sceneOrder || index} className="card form scene-card">
+          <article id={`scene-${scene.id || scene.sceneId || index}`} key={scene.id || scene.sceneId || scene.sceneOrder || index} className="card form scene-card">
             <div className="section-heading">
               <div>
                 <h3>Scene {scene.sceneOrder || index + 1}</h3>
@@ -139,7 +156,7 @@ export default function StoryboardPage({
               >
                 {materials.map((asset) => (
                   <option key={asset.id} value={asset.id}>
-                    {asset.originalName} ({asset.type})
+                    {asset.title || asset.name || asset.originalName || asset.id} ({asset.type})
                   </option>
                 ))}
               </select>
@@ -177,15 +194,15 @@ export default function StoryboardPage({
             <div className="button-row">
               <button
                 type="button"
-                disabled={disabled}
-                onClick={() => onSceneSave(storyboard?.id || storyboard?.storyboardId, scene.id || scene.sceneId || scene.sceneOrder, scene)}
+                disabled={disabled || !storyboardId}
+                onClick={() => onSceneSave(storyboardId, scene.id || scene.sceneId || scene.sceneOrder, scene)}
               >
                 Save scene
               </button>
               <button
                 type="button"
-                disabled={disabled}
-                onClick={() => onSceneRegenerate(storyboard?.id || storyboard?.storyboardId, scene.id || scene.sceneId || scene.sceneOrder, { prompt: scene.generationPrompt })}
+                disabled={disabled || !storyboardId}
+                onClick={() => onSceneRegenerate(storyboardId, scene.id || scene.sceneId || scene.sceneOrder, { prompt: scene.generationPrompt })}
               >
                 Regenerate
               </button>

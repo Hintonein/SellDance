@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PageShell from '../components/PageShell';
 
 export default function ProjectPage({ projects, selectedProjectId, onSelect, onCreate, onArchive }) {
+  const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
     name: '',
     productName: '',
@@ -37,14 +38,27 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
       expectedDuration: 15,
       description: '',
     });
+    setShowCreate(false);
   };
 
   return (
     <PageShell
-      title="Project creation"
-      description="Start a product video project for TikTok Shop or cross-border e-commerce campaigns."
+      title="Project setup"
+      description="Open an existing project or create a new product video workflow."
     >
-      <form className="card form" onSubmit={submit}>
+      <section className="card section-card">
+        <div className="section-heading">
+          <div>
+            <h3>Create project</h3>
+            <p>Optional. You can open an existing project below and continue assets, script, storyboard, and creation in one place.</p>
+          </div>
+          <button type="button" onClick={() => setShowCreate((prev) => !prev)}>
+            {showCreate ? 'Close' : 'New project'}
+          </button>
+        </div>
+      </section>
+
+      {showCreate ? <form className="card form section-card" onSubmit={submit}>
         <label>
           Project name
           <input
@@ -132,10 +146,15 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
           />
         </label>
         <button type="submit">Create project</button>
-      </form>
+      </form> : null}
 
-      <div className="card">
-        <h3>Projects</h3>
+      <div className="card section-card">
+        <div className="section-heading">
+          <div>
+            <h3>Projects</h3>
+            <p>Select an active merchant campaign or archive completed work.</p>
+          </div>
+        </div>
         <ul className="list">
           {projects.filter((project) => project.status !== 'archived').map((project) => (
             <li key={project.id}>

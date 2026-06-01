@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { UPLOADS_DIR } = require('../config/paths');
-const { appendMaterial, buildMockAnalysis, normalizeAssetType } = require('./material.service');
+const { appendMaterial, buildMockAnalysis, normalizeAssetType, reanalyzeMaterial, updateMaterial, getAssetSlices, getMaterial } = require('./material.service');
 const { copyUploadFile, downloadRemoteAsset, writeGeneratedSvg } = require('./asset-download.service');
 const { createAiGeneratedAssetReview } = require('./compliance-review.service');
 const {
@@ -13,6 +13,7 @@ const {
 } = require('./volcengine-ark.service');
 const { listAssetGenerationTasks, writeAssetGenerationTasks } = require('./storage.service');
 const { getProject } = require('./project.service');
+const { curateTags } = require('./asset-tag.service');
 
 const validMediaTypes = new Set(['image', 'video']);
 const runningJobs = new Set();
@@ -41,9 +42,69 @@ function uniqueList(items) {
   return [...new Set((items || []).map((item) => String(item || '').trim()).filter(Boolean))];
 }
 
+function safeFileStem(value) {
+  return String(value || 'seedance_asset')
+    .trim()
+    .replace(/\.[a-zA-Z0-9]+$/, '')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60) || 'seedance_asset';
+}
+
+const genericGeneratedTags = new Set(['product', 'close_up', 'detail', 'studio_shot', 'studio', 'product_showcase']);
+
+function pruneGeneratedAnalysisTags(analysis = {}) {
+  return {
+    ...analysis,
+    tags: curateTags((analysis.tags || []).filter((tag) => !genericGeneratedTags.has(String(tag || '').toLowerCase()))),
+  };
+}
+
+function publicUploadPathToDisk(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string' || !fileUrl.startsWith('/uploads/')) return null;
+  const relativePath = fileUrl.replace(/^\/uploads\//, '');
+  if (!relativePath || relativePath.includes('..') || path.isAbsolute(relativePath)) return null;
+  return path.join(UPLOADS_DIR, relativePath);
+}
+
+async function imageAssetToDataUrl(projectId, assetId) {
+  const asset = await getMaterial(projectId, assetId);
+  if (!asset) throw new Error(`Reference asset ${assetId} is not linked to project ${projectId}.`);
+  if (asset.mediaType !== 'image' && asset.type !== 'image' && !String(asset.mimeType || '').startsWith('image/')) {
+    throw new Error(`Reference asset ${assetId} must be an image. Video slice reference generation is not enabled.`);
+  }
+  const diskPath = publicUploadPathToDisk(asset.fileUrl || asset.url);
+  if (!diskPath) throw new Error(`Reference image ${assetId} must be a local uploaded image or provided as data URL.`);
+  const bytes = await fs.readFile(diskPath);
+  const mimeType = asset.mimeType || 'image/png';
+  return {
+    url: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    sourceAssetId: asset.id,
+    mimeType,
+  };
+}
+
+async function normalizeReferenceImages(projectId, referenceImages = []) {
+  const allowedRoles = new Set(['first_frame', 'last_frame']);
+  const normalized = [];
+  for (const item of Array.isArray(referenceImages) ? referenceImages : []) {
+    const role = allowedRoles.has(item.role) ? item.role : 'first_frame';
+    if (item.assetId) {
+      normalized.push({ role, ...(await imageAssetToDataUrl(projectId, item.assetId)) });
+    } else if (item.dataUrl || item.url || item.imageUrl) {
+      const url = item.dataUrl || item.url || item.imageUrl;
+      if (!String(url).startsWith('data:image/') && !/^https?:\/\//.test(String(url))) {
+        throw new Error('Reference image must be a data:image URL or public HTTPS URL.');
+      }
+      normalized.push({ role, url, mimeType: item.mimeType || null, name: item.name || null });
+    }
+  }
+  return normalized.slice(0, 2);
+}
+
 function buildMockClassification(task, project = {}) {
   const sellingPoints = Array.isArray(project.sellingPoints) ? project.sellingPoints : [];
-  const tags = uniqueList([
+  const tags = curateTags([
     'AI生成',
     '商品展示',
     '电商短视频',
@@ -52,6 +113,7 @@ function buildMockClassification(task, project = {}) {
   ]);
   return {
     subject: project.productName || '商品展示视频',
+    assetName: project.productName ? `${project.productName} Seedance video` : 'Seedance product video',
     category: project.productCategory || task.assetType,
     sellingPoints,
     audience: project.targetAudience || 'social commerce shoppers',
@@ -161,12 +223,15 @@ async function persistGeneratedAsset(task, localAsset) {
   const assetId = `asset_${uuidv4()}`;
   const extension = path.extname(localAsset.publicUrl) || (task.mediaType === 'video' ? '.mp4' : '.svg');
   const classification = task.classification || {};
+  const assetTitle = classification.assetName || classification.title || classification.suggestedName || classification.subject || classification.category || `seedance_${assetId}`;
+  const fileStem = safeFileStem(assetTitle);
   const asset = await appendMaterial(task.projectId, {
     id: assetId,
     assetId,
     type: normalizeAssetType(task.assetType, inferMimeType(task.mediaType, localAsset.publicUrl)),
-    originalName: `AI生成素材_${assetId}${extension}`,
-    name: `AI生成素材_${assetId}${extension}`,
+    title: assetTitle,
+    originalName: `${fileStem}${extension}`,
+    name: `${fileStem}${extension}`,
     url: localAsset.publicUrl,
     fileUrl: localAsset.publicUrl,
     thumbnailUrl: task.mediaType === 'video' ? localAsset.publicUrl : localAsset.publicUrl,
@@ -178,13 +243,13 @@ async function persistGeneratedAsset(task, localAsset) {
     prompt: task.prompt,
     classification,
     analysis: {
-      ...buildMockAnalysis({ originalName: `AI生成素材_${assetId}`, type: task.assetType }),
+      ...buildMockAnalysis({ originalName: assetTitle, type: task.assetType }),
       subject: classification.subject || '商品展示视频',
       category: classification.category || task.assetType,
       colors: classification.colors || ['white', 'gold'],
       scene: classification.scene || 'studio',
       style: classification.style || 'clean commercial',
-      tags: uniqueList(['AI生成', '商品展示', '电商短视频', ...(classification.tags || [])]),
+      tags: curateTags((classification.tags || []).filter((tag) => !genericGeneratedTags.has(String(tag || '').toLowerCase()))),
       summary: classification.summary || '由 AI 根据商品卖点和提示词生成的短视频素材。',
       sellingPoints: classification.sellingPoints || [],
       audience: classification.audience || '',
@@ -194,7 +259,23 @@ async function persistGeneratedAsset(task, localAsset) {
     },
   });
   await createAiGeneratedAssetReview({ projectId: task.projectId, assetId });
-  return asset;
+  try {
+    const analyzed = await reanalyzeMaterial(task.projectId, assetId);
+    const slices = await getAssetSlices(task.projectId, assetId);
+    const firstSliceThumbnail = slices?.items?.[0]?.thumbnailUrl;
+    const cleanedAnalysis = pruneGeneratedAnalysisTags(analyzed.analysis || {});
+    if (firstSliceThumbnail && firstSliceThumbnail !== analyzed.thumbnailUrl) {
+      return updateMaterial(task.projectId, assetId, {
+        metadata: analyzed.metadata,
+        thumbnailUrl: firstSliceThumbnail,
+        analysis: cleanedAnalysis,
+        systemTags: cleanedAnalysis.tags || [],
+      });
+    }
+    return updateMaterial(task.projectId, assetId, { analysis: cleanedAnalysis, systemTags: cleanedAnalysis.tags || [] });
+  } catch {
+    return asset;
+  }
 }
 
 async function createAssetGenerationTask(projectId, payload = {}) {
@@ -229,6 +310,7 @@ async function createAssetGenerationTask(projectId, payload = {}) {
     prompt: payload.prompt || '',
     ratio: payload.ratio || (mediaType === 'video' ? '9:16' : '1:1'),
     durationSec: Number(payload.durationSec || 5),
+    referenceImages: await normalizeReferenceImages(projectId, payload.referenceImages || []),
     status: 'queued',
     progress: 0,
     resultAssetId: null,
@@ -267,6 +349,7 @@ async function runAssetGenerationTask(task) {
       const generated = await generateAssetWithVolcengine({
         ...current,
         prompt: enhancedPrompt,
+        referenceImages: current.referenceImages,
       });
       remoteUrl = generated.remoteUrl;
       current = await updateTask(current, { status: 'downloading', progress: 70, remoteUrl });

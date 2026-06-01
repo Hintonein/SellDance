@@ -1,10 +1,9 @@
 const { v4: uuidv4 } = require('uuid');
-const { readTask, listTasks: listTaskRecords, writeTask, readStoryboard } = require('./storage.service');
-const { normalizeScenes } = require('./storyboard-scene.service');
-const { listMaterials } = require('./material.service');
+const { readTask, listTasks: listTaskRecords, writeTask } = require('./storage.service');
 const { renderProjectVideo, clipsToRenderScenes } = require('./video-render.service');
-const { getAsset } = require('./asset.service');
+const { getAsset, listAssets } = require('./asset.service');
 const { getEditingPlan } = require('./creation-planning.service');
+const { getStoryboard } = require('./storyboard.service');
 
 const runningJobs = new Set();
 const stepByStatus = {
@@ -60,6 +59,11 @@ async function assetsForEditingPlan(projectId, plan) {
   return assets;
 }
 
+async function assetsForStoryboardRender(projectId) {
+  const result = await listAssets(projectId, { limit: 0 });
+  return Array.isArray(result.items) ? result.items : [];
+}
+
 async function runTask(task) {
   if (runningJobs.has(task.id)) return;
   runningJobs.add(task.id);
@@ -87,9 +91,9 @@ async function runTask(task) {
         duration: plan.metadata?.duration || plan.targetDuration || null,
       };
     } else {
-      const storyboard = await readStoryboard(task.projectId);
-      scenes = normalizeScenes(storyboard?.scenes || []);
-      materials = await listMaterials(task.projectId);
+      const storyboard = await getStoryboard(task.projectId);
+      scenes = storyboard?.scenes || [];
+      materials = await assetsForStoryboardRender(task.projectId);
       renderMetadata = {
         usedAssetIds: [...new Set(scenes.flatMap((scene) => scene.selectedAssetIds || scene.assetRefs || []))],
         usedAssetSliceIds: [...new Set(scenes.flatMap((scene) => scene.selectedAssetSliceIds || []))],

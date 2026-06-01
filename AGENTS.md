@@ -99,7 +99,7 @@ Before implementing new features, read `DEVELOPMENT_GUIDE.md`. It is the phase p
 
 The current self-owned asset library supports:
 
-- Uploading merchant assets through the existing `/materials` and `/assets` APIs.
+- Uploading merchant assets through the existing `/materials` and `/assets` APIs. New asset records live in the shared global asset pool; project asset APIs expose links from the current project to that pool.
 - Deleting assets by either `id` or `assetId`, including best-effort deletion of local `/uploads/...` files and thumbnails.
 - AI generated video assets only. AI image generation is intentionally disabled for now because the current account does not have Seedream access.
 - Seedance text-to-video generation through Volcengine Ark, with mock fallback when `ARK_API_KEY` is absent.
@@ -116,15 +116,14 @@ ARK_BASE_URL=https://ark.cn-beijing.volces.com
 SEEDANCE_ENDPOINT_ID=ep-...
 SEEDANCE_MODEL=...
 SEED_ENDPOINT_ID=ep-...
-SEED_CLASSIFICATION_ENDPOINT_ID=ep-...
-ARK_POLL_ATTEMPTS=24
+ARK_POLL_ATTEMPTS=120
 ARK_POLL_INTERVAL_MS=5000
 ```
 
 Notes:
 
 - `SEEDANCE_ENDPOINT_ID` is preferred over `SEEDANCE_MODEL` because some Ark accounts must call custom endpoints rather than model IDs.
-- `SEED_ENDPOINT_ID` is supported for Seed 2.0 prompt classification. `SEED_CLASSIFICATION_ENDPOINT_ID` is the clearer alias and takes precedence.
+- `SEED_ENDPOINT_ID` is the only recommended Seed 2.0 endpoint variable for this account.
 - Before Seedance video generation, the backend should classify/enrich the prompt using project context such as `productCategory`, `sellingPoints`, `targetAudience`, `tone`, and `style`.
 - If Seed 2.0 classification fails, fallback to mock classification and continue video generation.
 - Keep provider-specific Ark calls inside `backend/src/services/volcengine-ark.service.js`.
@@ -208,9 +207,13 @@ Code should leave interfaces open for:
 ## Phase 2 Asset Structuring Rules
 
 - Keep /assets as the canonical API. Keep /materials available only as a deprecated compatibility alias.
-- New AssetSlice writes must go through asset-slice.service.js and the independent asset-slices store.
+- New AssetSlice writes must go through asset-slice.service.js and the independent asset-slices store. Intrinsic slices for shared assets may be stored under the global asset context and consumed through project asset links.
 - Video metadata extraction and slice thumbnail generation belong in service files, not routes.
 - Tags should preserve tags while adding userTags and systemTags. Normalize common Chinese aliases to canonical English tags.
 - Asset Search and Asset Recall must return asset, matchedSlices, score, and reason; recall also returns usageSuggestion.
 - Embedding and semantic search shapes may remain in the API, but unimplemented vector search must return a clear 501.
 - AI_ASSET_ANALYSIS_PROVIDER defaults to mock. Seed 2.0 analysis must go through model-provider.service.js and providers/volcengine/seed2.client.js.
+- Seed 2.0 asset analysis for this account must use `ARK_API_KEY`, `ARK_BASE_URL`, and `SEED_ENDPOINT_ID`; do not introduce or recommend `SEED2_MODEL` or `SEED2_ENDPOINT_ID` for new code.
+- Business services must not import raw Volcengine/Ark provider clients. They must call `model-provider.service.js`.
+- Seed 2.0 request failures must be request-level failures only: do not break backend startup, and write `analysisStatus=failed` plus structured `analysisError`.
+- Never commit real `.env` values, runtime JSON under `backend/data`, uploaded media under `backend/uploads`, or rendered outputs under `backend/outputs`.

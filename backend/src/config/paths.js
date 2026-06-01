@@ -8,6 +8,7 @@ module.exports = {
   DATA_DIR,
   PROJECTS_DIR: path.join(DATA_DIR, 'projects'),
   ASSETS_DIR: path.join(DATA_DIR, 'assets'),
+  PROJECT_ASSET_LINKS_DIR: path.join(DATA_DIR, 'project-assets'),
   ASSET_SLICES_FILE: path.join(DATA_DIR, 'asset-slices.json'),
   SCRIPTS_DIR: path.join(DATA_DIR, 'scripts'),
   STORYBOARDS_DIR: path.join(DATA_DIR, 'storyboards'),

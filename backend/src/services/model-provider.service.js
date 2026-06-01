@@ -3,7 +3,7 @@ const { generateScript } = require('./ai-script.service');
 const { buildStoryboard } = require('./storyboard-matcher.service');
 const { generateAssetWithVolcengine } = require('./volcengine-ark.service');
 const { analyzeAssetWithSeed2 } = require('../providers/volcengine/seed2.client');
-const { normalizeTags } = require('./asset-tag.service');
+const { curateTags } = require('./asset-tag.service');
 const { normalizeScript, normalizeScriptScene } = require('./script.service');
 const { buildAssetRequirements } = require('./scene-asset-matching.service');
 
@@ -15,7 +15,7 @@ function disabled(name) {
 
 function normalizeAssetAnalysis(raw = {}, asset = {}) {
   const mock = buildMockAnalysis(asset);
-  const tags = normalizeTags([
+  const tags = curateTags([
     ...(raw.tags || []),
     ...(raw.product?.tags || []),
     ...(raw.sellingPoints || []),
