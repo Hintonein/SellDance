@@ -2,7 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com';
-const DEFAULT_TIMEOUT_MS = 45000;
+const DEFAULT_TIMEOUT_MS = 90000;
 
 function seed2Config() {
   return {
@@ -229,6 +229,80 @@ async function callSeed2Responses(content, config = seed2Config(), fetchImpl = g
   }
 }
 
+async function generateJsonWithSeed2({
+  systemPrompt = '',
+  userPrompt = '',
+  schema = null,
+  temperature = 0,
+  fetchImpl,
+} = {}) {
+  const schemaHint = schema ? `\nRequired JSON schema:\n${JSON.stringify(schema, null, 2)}` : '';
+  const text = [
+    systemPrompt || 'You are a strict JSON generation assistant for compliant e-commerce short-form video planning.',
+    'Return strict JSON only. Do not wrap the answer in markdown. Do not include comments.',
+    schemaHint,
+    'User input:',
+    userPrompt,
+  ].filter(Boolean).join('\n');
+  const config = seed2Config();
+  if (!config.apiKey || !config.endpointId) throw missingSeed2ConfigError();
+  if (typeof (fetchImpl || globalThis.fetch) !== 'function') {
+    const error = new Error('Global fetch is not available in this Node runtime.');
+    error.statusCode = 500;
+    error.code = 'FETCH_UNAVAILABLE';
+    throw error;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const body = {
+    model: config.endpointId,
+    input: [{ role: 'user', content: [{ type: 'input_text', text }] }],
+    temperature,
+  };
+  try {
+    const response = await (fetchImpl || globalThis.fetch)(responsesUrl(config.baseUrl), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const responseText = await response.text();
+    let payload = null;
+    try { payload = responseText ? JSON.parse(responseText) : {}; } catch { payload = { rawText: responseText }; }
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || payload?.message || `Seed 2.0 request failed with HTTP ${response.status}.`);
+      error.statusCode = response.status >= 500 ? 502 : response.status;
+      error.code = payload?.error?.code || 'SEED2_REQUEST_FAILED';
+      error.provider = 'seed2';
+      error.details = payload?.error || payload;
+      throw error;
+    }
+    const rawText = extractOutputText(payload);
+    const { parsed, warning } = parseJsonOrFallback(rawText);
+    return {
+      ...parsed,
+      provider: 'seed2',
+      model: config.endpointId,
+      rawText: rawText.slice(0, 4000),
+      parseWarning: warning || parsed.parseWarning || null,
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      const timeoutError = new Error('Seed 2.0 request timed out.');
+      timeoutError.statusCode = 504;
+      timeoutError.code = 'SEED2_TIMEOUT';
+      timeoutError.provider = 'seed2';
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function analyzeImageWithSeed2({ asset, imageFile, imageUrl, promptContext = {}, fetchImpl } = {}) {
   const content = await buildImageContent({ asset, imageFile, imageUrl, promptContext, mode: 'image', slices: [] });
   return callSeed2Responses(content, seed2Config(), fetchImpl);
@@ -250,6 +324,7 @@ module.exports = {
   analyzeAssetWithSeed2,
   analyzeImageWithSeed2,
   analyzeVideoFramesWithSeed2,
+  generateJsonWithSeed2,
   missingSeed2ConfigError,
   parseJsonOrFallback,
 };

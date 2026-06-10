@@ -6,7 +6,7 @@ const { readAssets, writeAssets } = require('./storage.service');
 const { searchAssets, searchAssetMatches, buildRecallResult } = require('./asset-search.service');
 const { createSlices, listSlices, getSlice, updateSlice, deleteSlice, deleteSlicesByAsset, searchSlices } = require('./asset-slice.service');
 const { normalizeTags, mergeTags, normalizeTagFields, inferSystemTagsFromAsset, curateTags } = require('./asset-tag.service');
-const { probeVideoMetadata, createVideoSlicesFromAsset } = require('./video-metadata.service');
+const { probeVideoMetadata, createBrowserVideoPreview, createVideoSlicesFromAsset } = require('./video-metadata.service');
 const { sampleRepresentativeFrames, deleteSampledFramesByAsset } = require('./video-frame-sampling.service');
 const {
   listProjectAssetLinks,
@@ -15,7 +15,7 @@ const {
   removeAssetFromAllProjects,
 } = require('./project-asset-link.service');
 
-const canonicalTypes = new Set(['image', 'video', 'reference', 'ai_generated']);
+const canonicalTypes = new Set(['image', 'video', 'audio', 'reference', 'ai_generated']);
 const canonicalSources = new Set(['upload', 'url', 'ai', 'reference', 'mock']);
 const legacyAssetTypes = new Set(['product_image', 'product_video', 'reference_image', 'reference_video', 'logo', 'other']);
 const GLOBAL_ASSET_STORE_ID = 'global';
@@ -47,6 +47,7 @@ function inferCanonicalType({ requestedType, source, mimeType }) {
   if (source === 'ai' || source === 'mock' || source === 'ai_generated') return 'ai_generated';
   if (requestedType === 'reference' || requestedType === 'reference_image' || requestedType === 'reference_video') return 'reference';
   const mediaType = inferMediaType(mimeType, requestedType);
+  if (mediaType === 'audio') return 'audio';
   if (mediaType === 'image' || mediaType === 'video') return mediaType;
   return null;
 }
@@ -62,9 +63,31 @@ function normalizeLegacyAssetType(type = 'other', mimeType = '') {
   if (type === 'reference') return mimeType.startsWith('video/') ? 'reference_video' : 'reference_image';
   if (type === 'image') return 'product_image';
   if (type === 'video') return 'product_video';
+  if (type === 'audio' || mimeType.startsWith('audio/')) return 'other';
   if (mimeType.startsWith('image/')) return 'product_image';
   if (mimeType.startsWith('video/')) return 'product_video';
   return 'other';
+}
+function normalizeAudioMetadata(metadata = {}, raw = {}) {
+  const existing = metadata.audio && typeof metadata.audio === 'object' && !Array.isArray(metadata.audio) ? metadata.audio : {};
+  const requestedKind = raw.audioKind || raw.audioType || existing.kind || 'background_music';
+  const kind = requestedKind === 'full_audio_voiceover' || requestedKind === 'voiceover_track' ? 'full_audio_voiceover' : 'background_music';
+  const requestedMixMode = raw.backgroundMusicMixMode || raw.mixMode || existing.mixMode;
+  const mixMode = requestedMixMode === 'replace_source' || kind === 'full_audio_voiceover' ? 'replace_source' : 'mix_under_source';
+  const parsedVolume = Number(raw.backgroundMusicVolume ?? raw.volume ?? existing.recommendedVolume);
+  const recommendedVolume = Number.isFinite(parsedVolume) && parsedVolume > 0
+    ? Math.max(0.01, Math.min(1, Number(parsedVolume.toFixed(2))))
+    : (mixMode === 'replace_source' ? 1 : 0.16);
+  return {
+    ...metadata,
+    audio: {
+      ...existing,
+      kind,
+      mixMode,
+      containsVoiceover: mixMode === 'replace_source',
+      recommendedVolume,
+    },
+  };
 }
 function normalizeAsset(projectId, raw = {}) {
   const timestamp = raw.createdAt || raw.uploadedAt || now();
@@ -75,8 +98,10 @@ function normalizeAsset(projectId, raw = {}) {
   const mediaType = raw.mediaType || inferMediaType(mimeType, legacyType || canonicalType);
   const id = raw.id || raw.assetId || raw.materialId || uuidv4();
   const fileUrl = raw.fileUrl || raw.url || '';
+  const previewUrl = raw.previewUrl || raw.browserPreviewUrl || raw.metadata?.video?.previewUrl || '';
   const title = raw.title || raw.name || raw.originalName || 'Untitled asset';
-  const metadata = parseMetadata(raw.metadata);
+  let metadata = parseMetadata(raw.metadata);
+  if (mediaType === 'audio') metadata = normalizeAudioMetadata(metadata, raw);
   const analysis = raw.analysis ? {
     ...raw.analysis,
     tags: curateTags(raw.analysis.tags || []),
@@ -99,6 +124,8 @@ function normalizeAsset(projectId, raw = {}) {
     description: raw.description || '',
     fileUrl,
     url: raw.url || fileUrl,
+    previewUrl,
+    browserPreviewUrl: raw.browserPreviewUrl || previewUrl,
     filePath: raw.filePath || raw.storagePath || '',
     storagePath: raw.storagePath || raw.filePath || '',
     thumbnailUrl: raw.thumbnailUrl || fileUrl,
@@ -128,6 +155,18 @@ async function removeLocalUploadIfPresent(fileUrl) {
   const diskPath = publicUploadPathToDisk(fileUrl);
   if (!diskPath) return;
   try { await fs.unlink(diskPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
+async function removeAssetLocalFiles(asset = {}) {
+  await removeLocalUploadIfPresent(asset.fileUrl || asset.url);
+  if (asset.previewUrl && asset.previewUrl !== asset.fileUrl && asset.previewUrl !== asset.url) {
+    await removeLocalUploadIfPresent(asset.previewUrl);
+  }
+  if (asset.browserPreviewUrl && asset.browserPreviewUrl !== asset.previewUrl && asset.browserPreviewUrl !== asset.fileUrl && asset.browserPreviewUrl !== asset.url) {
+    await removeLocalUploadIfPresent(asset.browserPreviewUrl);
+  }
+  if (asset.thumbnailUrl && asset.thumbnailUrl !== asset.fileUrl && asset.thumbnailUrl !== asset.url && asset.thumbnailUrl !== asset.previewUrl && asset.thumbnailUrl !== asset.browserPreviewUrl) {
+    await removeLocalUploadIfPresent(asset.thumbnailUrl);
+  }
 }
 async function listGlobalAssetRecords() {
   const rawAssets = await readAssets(GLOBAL_ASSET_STORE_ID, []);
@@ -259,10 +298,29 @@ async function listAssets(projectId, query = {}) {
 async function enrichUploadedVideoAsset(asset, filePath) {
   if (asset.mediaType !== 'video') return asset;
   const videoMetadata = await probeVideoMetadata(filePath);
+  const browserPreview = await createBrowserVideoPreview({
+    filePath,
+    assetId: asset.id,
+    mimeType: asset.mimeType,
+    fileUrl: asset.fileUrl || asset.url,
+    metadata: videoMetadata,
+  });
   return normalizeAsset(asset.projectId, {
     ...asset,
     duration: videoMetadata.duration,
-    metadata: { ...(asset.metadata || {}), video: videoMetadata },
+    previewUrl: browserPreview.previewUrl || asset.previewUrl || '',
+    browserPreviewUrl: browserPreview.previewUrl || asset.browserPreviewUrl || '',
+    metadata: {
+      ...(asset.metadata || {}),
+      video: {
+        ...videoMetadata,
+        browserPlayable: browserPreview.previewStatus === 'source_browser_playable',
+        previewUrl: browserPreview.previewUrl || '',
+        previewStatus: browserPreview.previewStatus,
+        previewMimeType: browserPreview.previewMimeType,
+        previewError: browserPreview.previewError || null,
+      },
+    },
     systemTags: mergeTags(asset.systemTags, ['video', 'product_video']),
   });
 }
@@ -270,7 +328,7 @@ async function createAssetFromUpload(projectId, file, payload = {}) {
   if (!file) throw new Error('Please upload a file.');
   const source = normalizeSource(payload.source || 'upload');
   const canonicalType = inferCanonicalType({ requestedType: payload.type, source, mimeType: file.mimetype });
-  if (!canonicalType || !['image', 'video', 'reference'].includes(canonicalType)) {
+  if (!canonicalType || !['image', 'video', 'audio', 'reference'].includes(canonicalType)) {
     await removeLocalUploadIfPresent('/uploads/' + file.filename);
     throw new Error('Unsupported asset type or mimeType: ' + (payload.type || file.mimetype || 'unknown') + '.');
   }
@@ -279,16 +337,16 @@ async function createAssetFromUpload(projectId, file, payload = {}) {
   let asset = normalizeAsset(GLOBAL_ASSET_STORE_ID, {
     id: uuidv4(), projectId: GLOBAL_ASSET_STORE_ID, originProjectId: projectId, type: canonicalType, assetType: normalizeLegacyAssetType(payload.type || canonicalType, file.mimetype), mediaType: inferMediaType(file.mimetype, payload.type), source, title,
     description: payload.description || '', fileUrl: '/uploads/' + file.filename, url: '/uploads/' + file.filename, filePath: path.join('uploads', file.filename), storagePath: path.join('uploads', file.filename), thumbnailUrl: '/uploads/' + file.filename,
-    filename: file.filename, originalName: file.originalname, mimeType: file.mimetype, size: file.size, userTags: parseTags(payload.tags), metadata: parseMetadata(payload.metadata), analysisStatus: 'pending', analysis: null, slices: [], createdAt: timestamp, updatedAt: timestamp, uploadedAt: timestamp,
+    filename: file.filename, originalName: file.originalname, mimeType: file.mimetype, size: file.size, userTags: parseTags(payload.tags), metadata: parseMetadata(payload.metadata), audioKind: payload.audioKind || payload.audioType, backgroundMusicMixMode: payload.backgroundMusicMixMode, backgroundMusicVolume: payload.backgroundMusicVolume, analysisStatus: 'pending', analysis: null, slices: [], createdAt: timestamp, updatedAt: timestamp, uploadedAt: timestamp,
   });
-  try { asset = await enrichUploadedVideoAsset(asset, file.path); } catch (error) { await removeLocalUploadIfPresent(asset.fileUrl); throw error; }
+  try { asset = await enrichUploadedVideoAsset(asset, file.path); } catch (error) { await removeAssetLocalFiles(asset); throw error; }
   return withAssetMutation(GLOBAL_ASSET_STORE_ID, async () => {
     try {
       const globalAsset = await upsertGlobalAsset(asset);
       const link = await linkAssetToProject(projectId, globalAsset.id, { addedFrom: 'upload', role: payload.role || 'candidate' });
       return attachProjectLink(projectId, globalAsset, link);
     } catch (error) {
-      await removeLocalUploadIfPresent(asset.fileUrl);
+      await removeAssetLocalFiles(asset);
       throw error;
     }
   });
@@ -358,10 +416,9 @@ async function deleteGlobalAsset(assetId, options = {}) {
       removedSlices.push(...legacySlices);
       await deleteSampledFramesByAsset(linkedProjectId, target.id);
     }
-    await removeLocalUploadIfPresent(target.fileUrl || target.url);
-    if (target.thumbnailUrl && target.thumbnailUrl !== target.fileUrl && target.thumbnailUrl !== target.url) await removeLocalUploadIfPresent(target.thumbnailUrl);
+    await removeAssetLocalFiles(target);
     for (const slice of removedSlices) {
-      if (slice.thumbnailUrl && slice.thumbnailUrl !== target.fileUrl && slice.thumbnailUrl !== target.url && slice.thumbnailUrl !== target.thumbnailUrl) await removeLocalUploadIfPresent(slice.thumbnailUrl);
+      if (slice.thumbnailUrl && slice.thumbnailUrl !== target.fileUrl && slice.thumbnailUrl !== target.url && slice.thumbnailUrl !== target.thumbnailUrl && slice.thumbnailUrl !== target.previewUrl && slice.thumbnailUrl !== target.browserPreviewUrl) await removeLocalUploadIfPresent(slice.thumbnailUrl);
     }
     await deleteSampledFramesByAsset(GLOBAL_ASSET_STORE_ID, target.id);
     await writeGlobalAssetRecords(next);

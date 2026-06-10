@@ -72,6 +72,31 @@ function buildVideoFilter(scene, duration, includeSubtitle = true) {
   return withTransition.join(',');
 }
 
+function normalizeSubtitleMode(value) {
+  if (value === 'sidecar' || value === 'burned_in_experimental') return value;
+  return 'off';
+}
+
+function normalizeBackgroundMusicMixMode(value, asset = null) {
+  const assetMixMode = asset?.metadata?.audio?.mixMode;
+  if (value === 'replace_source' || value === 'mix_under_source') return value;
+  if (assetMixMode === 'replace_source' || assetMixMode === 'mix_under_source') return assetMixMode;
+  return asset ? 'mix_under_source' : null;
+}
+
+function normalizeBackgroundMusicVolume(value, asset = null, mixMode = 'mix_under_source') {
+  const parsed = Number(value ?? asset?.metadata?.audio?.recommendedVolume);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.max(0.01, Math.min(1, Number(parsed.toFixed(2))));
+  return mixMode === 'replace_source' ? 1 : 0.16;
+}
+
+function normalizeAudioMode(value, hasBackgroundMusic = false, backgroundMusicMixMode = null) {
+  if (value === 'silent') return 'silent';
+  if (value === 'uploaded_bgm') return 'uploaded_bgm';
+  if (hasBackgroundMusic && backgroundMusicMixMode === 'replace_source') return 'uploaded_bgm';
+  return 'preserve_source';
+}
+
 async function runWithSubtitleFallback(buildArgs) {
   try {
     await runCommand('ffmpeg', buildArgs(true));
@@ -102,6 +127,41 @@ async function ensureFfmpegAvailable() {
   await runCommand('ffmpeg', ['-version']);
 }
 
+function runCommandCapture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (error) => reject(error));
+    child.on('close', (code) => {
+      if (code === 0) return resolve(stdout);
+      return reject(new Error(`${command} exited with code ${code}: ${stderr.slice(-2000)}`));
+    });
+  });
+}
+
+async function probeHasAudio(filePath) {
+  if (!filePath) return false;
+  try {
+    const stdout = await runCommandCapture('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'a:0',
+      '-show_entries',
+      'stream=codec_type',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ]);
+    return stdout.trim().includes('audio');
+  } catch {
+    return false;
+  }
+}
+
 function resolveAssetPath(asset) {
   if (asset?.filename) {
     const safeFileName = path.basename(asset.filename);
@@ -111,6 +171,10 @@ function resolveAssetPath(asset) {
   if (typeof fileUrl === 'string' && fileUrl.startsWith('/uploads/')) {
     const relative = fileUrl.replace(/^\/uploads\//, '');
     if (relative && !relative.includes('..') && !path.isAbsolute(relative)) return resolveSafePath(UPLOADS_DIR, relative);
+  }
+  if (typeof fileUrl === 'string' && fileUrl.startsWith('/outputs/')) {
+    const relative = fileUrl.replace(/^\/outputs\//, '');
+    if (relative && !relative.includes('..') && !path.isAbsolute(relative)) return resolveSafePath(OUTPUTS_DIR, relative);
   }
   return null;
 }
@@ -129,9 +193,19 @@ function isImageAsset(asset) {
   return asset.type === 'image';
 }
 
-async function createSceneClip({ scene, asset, clipPath }) {
+async function createSceneClip({ scene, asset, clipPath, includeSubtitles = false, includeAudioTrack = true, preserveSourceAudio = true }) {
   const duration = Number(scene.durationSeconds || scene.duration) || 3;
   const assetPath = resolveAssetPath(asset);
+  const audioArgs = includeAudioTrack
+    ? [
+      '-f',
+      'lavfi',
+      '-t',
+      String(duration),
+      '-i',
+      'anullsrc=channel_layout=stereo:sample_rate=44100',
+    ]
+    : [];
 
   if (assetPath && isImageAsset(asset)) {
     await runWithSubtitleFallback((includeSubtitle) => [
@@ -140,23 +214,26 @@ async function createSceneClip({ scene, asset, clipPath }) {
       '1',
       '-i',
       assetPath,
+      ...audioArgs,
       '-t',
       String(duration),
       '-vf',
-      buildVideoFilter(scene, duration, includeSubtitle),
+      buildVideoFilter(scene, duration, includeSubtitles && includeSubtitle),
       '-r',
       String(FRAME_RATE),
+      ...(includeAudioTrack ? ['-map', '0:v:0', '-map', '1:a:0'] : []),
       '-c:v',
       'libx264',
+      ...(includeAudioTrack ? ['-c:a', 'aac', '-shortest'] : ['-an']),
       '-pix_fmt',
       'yuv420p',
-      '-an',
       clipPath,
     ]);
     return;
   }
 
   if (assetPath && isVideoAsset(asset)) {
+    const hasSourceAudio = preserveSourceAudio && await probeHasAudio(assetPath);
     await runWithSubtitleFallback((includeSubtitle) => {
       const args = [
       '-y',
@@ -168,17 +245,21 @@ async function createSceneClip({ scene, asset, clipPath }) {
         '-1',
         '-i',
         assetPath,
+        ...(includeAudioTrack && !hasSourceAudio ? audioArgs : []),
         '-t',
         String(duration),
         '-vf',
-        buildVideoFilter(scene, duration, includeSubtitle),
+        buildVideoFilter(scene, duration, includeSubtitles && includeSubtitle),
         '-r',
         String(FRAME_RATE),
+        '-map',
+        '0:v:0',
+        ...(includeAudioTrack ? ['-map', hasSourceAudio ? '0:a:0' : '1:a:0'] : []),
         '-c:v',
         'libx264',
+        ...(includeAudioTrack ? ['-c:a', 'aac', '-shortest'] : ['-an']),
         '-pix_fmt',
         'yuv420p',
-        '-an',
         clipPath,
       );
       return args;
@@ -192,20 +273,31 @@ async function createSceneClip({ scene, asset, clipPath }) {
     'lavfi',
     '-i',
     `color=c=black:s=${RENDER_WIDTH}x${RENDER_HEIGHT}:d=${duration}`,
+    ...audioArgs,
     '-vf',
-    buildVideoFilter(scene, duration, includeSubtitle),
+    buildVideoFilter(scene, duration, includeSubtitles && includeSubtitle),
     '-r',
     String(FRAME_RATE),
+    ...(includeAudioTrack ? ['-map', '0:v:0', '-map', '1:a:0'] : []),
     '-c:v',
     'libx264',
+    ...(includeAudioTrack ? ['-c:a', 'aac', '-shortest'] : ['-an']),
     '-pix_fmt',
     'yuv420p',
-    '-an',
     clipPath,
   ]);
 }
 
 function pickSceneAsset(scene, materialById) {
+  if (scene.sourceUrl) {
+    return {
+      id: scene.sceneId || scene.id || 'storyboard_generated_output',
+      fileUrl: scene.sourceUrl,
+      mediaType: scene.mediaType || 'video',
+      type: scene.mediaType || 'video',
+      mimeType: scene.mediaType === 'image' ? 'image/png' : 'video/mp4',
+    };
+  }
   const ids = Array.isArray(scene.selectedAssetIds) ? scene.selectedAssetIds : [];
   for (const id of ids) {
     const asset = materialById.get(id);
@@ -214,7 +306,8 @@ function pickSceneAsset(scene, materialById) {
   return null;
 }
 
-function clipsToRenderScenes(clips = []) {
+function clipsToRenderScenes(clips = [], options = {}) {
+  const includeSubtitleText = normalizeSubtitleMode(options.subtitleMode || options.renderSettings?.subtitleMode) === 'burned_in_experimental';
   return clips.map((clip, index) => ({
     sceneId: clip.sceneId || clip.id,
     sceneOrder: index + 1,
@@ -223,16 +316,48 @@ function clipsToRenderScenes(clips = []) {
     duration: Number(clip.duration || 3),
     startTime: clip.startTime,
     endTime: clip.endTime,
-    subtitleText: clip.subtitle || clip.voiceover || '',
-    subtitle: clip.subtitle || clip.voiceover || '',
-    scriptText: clip.voiceover || clip.subtitle || '',
-    visualDescription: clip.subtitle || clip.role || '',
+    subtitleText: includeSubtitleText ? (clip.subtitle || clip.caption || clip.voiceover || '') : '',
+    subtitle: includeSubtitleText ? (clip.subtitle || clip.caption || clip.voiceover || '') : '',
+    caption: clip.caption || clip.subtitle || clip.voiceover || '',
+    subtitleDraft: clip.caption || clip.subtitle || '',
+    scriptText: includeSubtitleText ? (clip.voiceover || clip.subtitle || clip.caption || '') : '',
+    visualDescription: clip.visualDescription || clip.reason || clip.role || '',
     cameraMotion: 'editing-plan cut',
     selectedAssetIds: clip.assetId ? [clip.assetId] : [],
     selectedAssetSliceIds: clip.sliceId ? [clip.sliceId] : [],
+    sourceUrl: clip.sourceUrl || '',
+    mediaType: clip.mediaType || '',
     layout: clip.fitMode === 'contain' ? 'contain' : 'cover',
     transition: clip.transitionIn === 'fade' ? 'fade' : 'cut',
   }));
+}
+
+function srtTime(seconds) {
+  const totalMs = Math.max(0, Math.round(Number(seconds || 0) * 1000));
+  const ms = totalMs % 1000;
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const sec = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const min = totalMinutes % 60;
+  const hour = Math.floor(totalMinutes / 60);
+  return `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+async function writeSidecarSubtitles(outputDir, safeTaskId, scenes = [], captionDrafts = []) {
+  const rows = [];
+  let cursor = 0;
+  scenes.forEach((scene, index) => {
+    const duration = Number(scene.durationSeconds || scene.duration || 0);
+    const text = scene.caption || scene.subtitleDraft || captionDrafts[index]?.text || '';
+    if (text) {
+      rows.push(`${rows.length + 1}\n${srtTime(cursor)} --> ${srtTime(cursor + duration)}\n${text}\n`);
+    }
+    cursor += duration;
+  });
+  if (!rows.length) return null;
+  const fileName = `${safeTaskId}.srt`;
+  await fs.writeFile(resolveSafePath(outputDir, fileName), rows.join('\n'), 'utf8');
+  return `/${path.posix.join('outputs', path.basename(outputDir), fileName)}`;
 }
 
 function pickBackgroundMusicAsset(options, materialById) {
@@ -240,7 +365,8 @@ function pickBackgroundMusicAsset(options, materialById) {
   if (!assetId) return null;
   const asset = materialById.get(assetId);
   if (!asset) return null;
-  return resolveAssetPath(asset);
+  const filePath = resolveAssetPath(asset);
+  return filePath ? { asset, filePath } : null;
 }
 
 function escapeConcatFilePath(filePath) {
@@ -259,7 +385,10 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
 
   const safeProjectId = ensureSafeId(projectId);
   const safeTaskId = ensureSafeId(taskId);
-  const materialById = new Map(materials.map((asset) => [asset.id, asset]));
+  const materialById = new Map();
+  materials.forEach((asset) => {
+    [asset?.id, asset?.assetId, asset?.materialId].filter(Boolean).forEach((id) => materialById.set(id, asset));
+  });
   const outputDir = resolveSafePath(OUTPUTS_DIR, safeProjectId);
   const workDir = resolveSafePath(outputDir, `.work-${safeTaskId}`);
   const mergedPath = resolveSafePath(workDir, 'merged.mp4');
@@ -267,6 +396,23 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
 
   await fs.mkdir(workDir, { recursive: true });
   await fs.mkdir(outputDir, { recursive: true });
+
+  const subtitleMode = normalizeSubtitleMode(options.subtitleMode || options.renderSettings?.subtitleMode);
+  const includeSubtitles = subtitleMode === 'burned_in_experimental';
+  const musicAsset = pickBackgroundMusicAsset(options, materialById);
+  const backgroundMusicMixMode = normalizeBackgroundMusicMixMode(
+    options.backgroundMusicMixMode || options.renderSettings?.backgroundMusicMixMode,
+    musicAsset?.asset || null
+  );
+  const backgroundMusicVolume = normalizeBackgroundMusicVolume(
+    options.backgroundMusicVolume || options.renderSettings?.backgroundMusicVolume,
+    musicAsset?.asset || null,
+    backgroundMusicMixMode || 'mix_under_source'
+  );
+  const musicAssetPath = musicAsset?.filePath || null;
+  const audioMode = normalizeAudioMode(options.audioMode || options.renderSettings?.audioMode, Boolean(musicAssetPath), backgroundMusicMixMode);
+  const includeAudioTrack = audioMode !== 'silent';
+  const preserveSourceAudio = audioMode === 'preserve_source';
 
   try {
     const clipPaths = [];
@@ -278,6 +424,9 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
         scene,
         asset: pickSceneAsset(scene, materialById),
         clipPath,
+        includeSubtitles,
+        includeAudioTrack,
+        preserveSourceAudio,
       });
       if (onProgress) {
         const clipProgress = Math.round(((index + 1) / scenes.length) * CLIP_PROGRESS_MAX);
@@ -289,7 +438,7 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
     const concatList = clipPaths.map((clipPath) => `file '${escapeConcatFilePath(clipPath)}'`).join('\n');
     await fs.writeFile(concatListPath, concatList, 'utf8');
 
-    await runCommand('ffmpeg', [
+    const concatArgs = [
       '-y',
       '-f',
       'concat',
@@ -303,14 +452,36 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
       'yuv420p',
       '-r',
       String(FRAME_RATE),
-      '-an',
+      ...(includeAudioTrack ? ['-c:a', 'aac'] : ['-an']),
       mergedPath,
-    ]);
+    ];
+    await runCommand('ffmpeg', concatArgs);
     if (onProgress) await onProgress(CONCAT_PROGRESS);
 
-    const musicAssetPath = pickBackgroundMusicAsset(options, materialById);
-    if (!musicAssetPath) {
+    if (audioMode === 'silent' || !musicAssetPath) {
       await fs.copyFile(mergedPath, finalPath);
+    } else if (backgroundMusicMixMode === 'mix_under_source') {
+      await runCommand('ffmpeg', [
+        '-y',
+        '-i',
+        mergedPath,
+        '-stream_loop',
+        '-1',
+        '-i',
+        musicAssetPath,
+        '-filter_complex',
+        `[1:a]volume=${backgroundMusicVolume}[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aud]`,
+        '-map',
+        '0:v:0',
+        '-map',
+        '[aud]',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-shortest',
+        finalPath,
+      ]);
     } else {
       await runCommand('ffmpeg', [
         '-y',
@@ -321,7 +492,7 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
         '-i',
         musicAssetPath,
         '-filter_complex',
-        '[1:a]volume=0.18[aud]',
+        `[1:a]volume=${backgroundMusicVolume}[aud]`,
         '-map',
         '0:v:0',
         '-map',
@@ -335,10 +506,25 @@ async function renderProjectVideo({ projectId, taskId, scenes, materials = [], o
       ]);
     }
     if (onProgress) await onProgress(COMPLETE_PROGRESS);
+    const captionUrl = subtitleMode === 'sidecar'
+      ? await writeSidecarSubtitles(outputDir, safeTaskId, scenes, options.captionDrafts || options.editingPlan?.captionDrafts || [])
+      : null;
 
     return {
       exportFile: path.posix.join('outputs', safeProjectId, `${safeTaskId}.mp4`),
       videoUrl: `/${path.posix.join('outputs', safeProjectId, `${safeTaskId}.mp4`)}`,
+      captionUrl,
+      subtitleMode,
+      audioMode,
+      backgroundMusicMixMode: musicAssetPath ? backgroundMusicMixMode : null,
+      backgroundMusicVolume: musicAssetPath ? backgroundMusicVolume : null,
+      backgroundMusicAssetId: options.backgroundMusicAssetId || null,
+      sourceAudioPreserved: audioMode === 'preserve_source',
+      audioMixSummary: musicAssetPath
+        ? (backgroundMusicMixMode === 'mix_under_source' ? 'Source audio preserved + BGM mixed quietly.' : 'BGM replaced source audio.')
+        : (audioMode === 'silent' ? 'Audio disabled.' : 'Source audio preserved.'),
+      hasAudioTrack: audioMode !== 'silent' && (includeAudioTrack || Boolean(musicAssetPath)),
+      audioFallbackReason: includeAudioTrack ? null : 'Audio was explicitly disabled.',
     };
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });

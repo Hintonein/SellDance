@@ -1,7 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { UPLOADS_DIR } = require('../config/paths');
+const { UPLOADS_DIR, OUTPUTS_DIR } = require('../config/paths');
 const { appendMaterial, buildMockAnalysis, normalizeAssetType, reanalyzeMaterial, updateMaterial, getAssetSlices, getMaterial } = require('./material.service');
 const { copyUploadFile, downloadRemoteAsset, writeGeneratedSvg } = require('./asset-download.service');
 const { createAiGeneratedAssetReview } = require('./compliance-review.service');
@@ -51,6 +51,84 @@ function safeFileStem(value) {
     .slice(0, 60) || 'seedance_asset';
 }
 
+function safePathSegment(value, fallback = 'item') {
+  const safe = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 64);
+  return safe || fallback;
+}
+
+async function fileSize(filePath) {
+  const stat = await fs.stat(filePath);
+  return stat.size;
+}
+
+async function downloadRemoteStoryboardOutput(remoteUrl, task) {
+  if (!remoteUrl) throw new Error('Remote storyboard video URL is empty.');
+  const projectId = safePathSegment(task.projectId, 'project');
+  const storyboardId = safePathSegment(task.metadata?.storyboardId || task.metadata?.storyboardSceneId || task.id, 'storyboard');
+  const outputDir = path.join(OUTPUTS_DIR, projectId, 'storyboards', storyboardId);
+  await fs.mkdir(outputDir, { recursive: true });
+  const response = await fetch(remoteUrl);
+  if (!response.ok) throw new Error(`Remote storyboard video download failed with ${response.status}.`);
+  const contentType = response.headers.get('content-type') || '';
+  const extension = contentType.includes('video/webm') ? '.webm' : '.mp4';
+  const fileName = `${safePathSegment(task.metadata?.storyboardSceneId || task.id, 'scene')}${extension}`;
+  const diskPath = path.join(outputDir, fileName);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.writeFile(diskPath, buffer);
+  return {
+    diskPath,
+    publicUrl: `/outputs/${projectId}/storyboards/${storyboardId}/${fileName}`,
+    size: buffer.length,
+    contentType,
+  };
+}
+
+async function copyStoryboardMockOutput(task) {
+  const demoPath = await assertDemoFile(
+    'demo-product-video.mp4',
+    'Mock storyboard video generation requires backend/uploads/demo-product-video.mp4. Please place a demo MP4 there and retry.'
+  );
+  const projectId = safePathSegment(task.projectId, 'project');
+  const storyboardId = safePathSegment(task.metadata?.storyboardId || task.metadata?.storyboardSceneId || task.id, 'storyboard');
+  const outputDir = path.join(OUTPUTS_DIR, projectId, 'storyboards', storyboardId);
+  await fs.mkdir(outputDir, { recursive: true });
+  const fileName = `${safePathSegment(task.metadata?.storyboardSceneId || task.id, 'scene')}.mp4`;
+  const diskPath = path.join(outputDir, fileName);
+  await fs.copyFile(demoPath, diskPath);
+  return {
+    diskPath,
+    publicUrl: `/outputs/${projectId}/storyboards/${storyboardId}/${fileName}`,
+    size: await fileSize(diskPath),
+    contentType: 'video/mp4',
+  };
+}
+
+function buildStoryboardOutputRecord(task, localAsset, generated) {
+  const outputId = `storyboard_output_${uuidv4()}`;
+  return {
+    id: outputId,
+    outputId,
+    mediaType: 'video',
+    type: 'storyboard_generated_output',
+    source: 'storyboard_workflow',
+    provider: task.provider,
+    model: generated?.model || task.model,
+    prompt: task.promptForGeneration || task.prompt,
+    fileUrl: localAsset.publicUrl,
+    url: localAsset.publicUrl,
+    thumbnailUrl: localAsset.publicUrl,
+    mimeType: 'video/mp4',
+    size: localAsset.size,
+    metadata: task.metadata || {},
+    isProjectAsset: false,
+    createdAt: now(),
+  };
+}
+
 const genericGeneratedTags = new Set(['product', 'close_up', 'detail', 'studio_shot', 'studio', 'product_showcase']);
 
 function pruneGeneratedAnalysisTags(analysis = {}) {
@@ -85,18 +163,26 @@ async function imageAssetToDataUrl(projectId, assetId) {
 }
 
 async function normalizeReferenceImages(projectId, referenceImages = []) {
-  const allowedRoles = new Set(['first_frame', 'last_frame']);
+  const allowedRoles = new Set(['reference', 'product_reference', 'identity_reference', 'style_reference', 'first_frame', 'last_frame']);
   const normalized = [];
   for (const item of Array.isArray(referenceImages) ? referenceImages : []) {
-    const role = allowedRoles.has(item.role) ? item.role : 'first_frame';
+    const role = allowedRoles.has(item.role) ? item.role : 'reference';
     if (item.assetId) {
       normalized.push({ role, ...(await imageAssetToDataUrl(projectId, item.assetId)) });
     } else if (item.dataUrl || item.url || item.imageUrl) {
       const url = item.dataUrl || item.url || item.imageUrl;
-      if (!String(url).startsWith('data:image/') && !/^https?:\/\//.test(String(url))) {
+      if (String(url).startsWith('/uploads/')) {
+        const diskPath = publicUploadPathToDisk(url);
+        if (!diskPath) throw new Error('Reference image upload URL is not a valid local upload path.');
+        const bytes = await fs.readFile(diskPath);
+        const ext = path.extname(diskPath).toLowerCase();
+        const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+        normalized.push({ role, url: `data:${mimeType};base64,${bytes.toString('base64')}`, mimeType, name: item.name || null });
+      } else if (!String(url).startsWith('data:image/') && !/^https?:\/\//.test(String(url))) {
         throw new Error('Reference image must be a data:image URL or public HTTPS URL.');
+      } else {
+        normalized.push({ role, url, mimeType: item.mimeType || null, name: item.name || null });
       }
-      normalized.push({ role, url, mimeType: item.mimeType || null, name: item.name || null });
     }
   }
   return normalized.slice(0, 2);
@@ -326,6 +412,145 @@ async function createAssetGenerationTask(projectId, payload = {}) {
   return task;
 }
 
+async function buildGenerationTask(projectId, payload = {}, idPrefix = 'asset_gen') {
+  const generator = payload.generator || payload.generationType || payload.provider || 'seed_dance';
+  const generationOption = generationOptions[generator] || null;
+  if (generator !== 'seed_dance') {
+    throw new Error('Only seed_dance text-to-video asset generation is enabled. AI image generation is disabled for this project.');
+  }
+  const mediaType = generationOption?.mediaType || (validMediaTypes.has(payload.mediaType) ? payload.mediaType : 'image');
+  if (mediaType !== 'video') {
+    throw new Error('Only AI video asset generation is enabled. Please use seed_dance.');
+  }
+  const provider = payload.provider === 'mock' ? 'mock' : hasArkApiKey() ? 'volcengine' : 'mock';
+  const endpointId = payload.endpointId || (generationOption ? process.env[generationOption.endpointEnv] : '');
+  const defaultModel = endpointId || (generationOption
+    ? process.env[generationOption.defaultModelEnv] || generationOption.defaultModel
+    : process.env.SEEDANCE_MODEL || 'seedance-1.5-pro');
+  return {
+    id: `${idPrefix}_${uuidv4()}`,
+    projectId,
+    productId: payload.productId || null,
+    provider,
+    requestedProvider: generator,
+    generator,
+    endpointId: endpointId || null,
+    model: defaultModel,
+    mediaType,
+    assetType: normalizeAssetType(payload.assetType || generationOption?.defaultAssetType || 'product_video'),
+    prompt: payload.prompt || '',
+    ratio: payload.ratio || '9:16',
+    durationSec: Number(payload.durationSec || 5),
+    referenceImages: await normalizeReferenceImages(projectId, payload.referenceImages || []),
+    status: 'queued',
+    progress: 0,
+    resultAssetId: null,
+    remoteUrl: null,
+    localUrl: null,
+    error: null,
+    metadata: payload.metadata || {},
+    createdAt: now(),
+    updatedAt: now(),
+  };
+}
+
+async function generateStoryboardSceneAsset(projectId, payload = {}, options = {}) {
+  const task = await buildGenerationTask(projectId, {
+    ...payload,
+    generator: 'seed_dance',
+    mediaType: 'video',
+    assetType: payload.assetType || 'storyboard_video',
+  }, 'storyboard_scene_gen');
+  let localAsset;
+  let remoteUrl = null;
+  let generated = null;
+  const classification = payload.classification || await classifyGenerationPrompt(task);
+  const enhancedPrompt = classification.enhancedPrompt || task.prompt;
+  const current = {
+    ...task,
+    classification,
+    promptForGeneration: enhancedPrompt,
+    classificationModel: classification.model,
+    classificationProvider: classification.provider,
+    classificationError: classification.error || null,
+  };
+  const persistToAssetLibrary = options.persistToAssetLibrary !== undefined
+    ? options.persistToAssetLibrary
+    : payload.persistToAssetLibrary !== false;
+  if (current.provider === 'volcengine') {
+    const generateImpl = options.generateAssetWithVolcengine || generateAssetWithVolcengine;
+    generated = await generateImpl({
+      ...current,
+      prompt: enhancedPrompt,
+      referenceImages: current.referenceImages,
+    });
+    remoteUrl = generated.remoteUrl;
+    if (persistToAssetLibrary) {
+      const downloadImpl = options.downloadRemoteAsset || downloadRemoteAsset;
+      localAsset = await downloadImpl(remoteUrl, `generated-${current.id}`, '.mp4');
+    } else {
+      const downloadImpl = options.downloadStoryboardOutput || downloadRemoteStoryboardOutput;
+      localAsset = await downloadImpl(remoteUrl, current);
+    }
+  } else {
+    if (persistToAssetLibrary) {
+      localAsset = options.generateMockLocalAsset
+        ? await options.generateMockLocalAsset(current)
+        : await generateMockLocalAsset(current);
+    } else {
+      localAsset = options.generateMockStoryboardOutput
+        ? await options.generateMockStoryboardOutput(current)
+        : await copyStoryboardMockOutput(current);
+    }
+  }
+  if (!persistToAssetLibrary) {
+    const output = buildStoryboardOutputRecord(current, localAsset, generated);
+    return {
+      task: {
+        ...current,
+        status: 'ready',
+        progress: 100,
+        remoteUrl,
+        localUrl: localAsset.publicUrl,
+        resultOutputId: output.outputId,
+        generationDurationSec: generated?.durationSec || null,
+        requestedDurationSec: generated?.requestedDurationSec || current.durationSec || null,
+      },
+      output,
+      remoteUrl,
+      remoteTaskId: generated?.taskId || null,
+      model: generated?.model || current.model,
+      durationSec: generated?.durationSec || current.durationSec,
+      requestedDurationSec: generated?.requestedDurationSec || current.durationSec,
+    };
+  }
+  const persistImpl = options.persistGeneratedAsset || persistGeneratedAsset;
+  const asset = await persistImpl({
+    ...current,
+    remoteUrl,
+    localUrl: localAsset.publicUrl,
+    status: 'indexed',
+  }, localAsset);
+  return {
+    task: {
+      ...current,
+      status: 'ready',
+      progress: 100,
+      remoteUrl,
+      localUrl: localAsset.publicUrl,
+      resultAssetId: asset.assetId || asset.id,
+      generationDurationSec: generated?.durationSec || null,
+      requestedDurationSec: generated?.requestedDurationSec || current.durationSec || null,
+    },
+    asset,
+    remoteUrl,
+    remoteTaskId: generated?.taskId || null,
+    model: generated?.model || current.model,
+    durationSec: generated?.durationSec || current.durationSec,
+    requestedDurationSec: generated?.requestedDurationSec || current.durationSec,
+  };
+}
+
 async function runAssetGenerationTask(task) {
   if (runningJobs.has(task.id)) return task;
   runningJobs.add(task.id);
@@ -386,4 +611,6 @@ async function runAssetGenerationTask(task) {
 module.exports = {
   createAssetGenerationTask,
   getAssetGenerationTask,
+  generateStoryboardSceneAsset,
+  buildGenerationTask,
 };

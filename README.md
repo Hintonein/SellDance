@@ -1,67 +1,192 @@
 # SellDance
 
-SellDance 是面向 TikTok Shop、跨境电商与社媒电商商家的 AIGC 带货短视频生成系统。
+SellDance is an AI-assisted e-commerce video production system for short-form selling videos. It combines product assets, public-video inspiration mining, script generation, storyboard video generation, smart editing, and final MP4 rendering into one merchant-facing workflow.
 
-参赛课题：电商场景 AIGC 带货视频生成。
+The project is designed for practical commerce-video production rather than a one-off demo: assets are indexed, scripts are versioned, storyboard scenes are editable, long-running AI jobs are tracked, and final rendering is handled by a backend pipeline.
 
-核心业务价值：把商品信息、素材、Prompt、脚本、分镜和长任务渲染串成一条可运行的商家端自动出片链路。
+## Technical Highlights
 
-## 功能说明
+- End-to-end AI video workflow: project setup, asset library, reference-video search, methodology extraction, script generation, storyboard generation, smart editing, and final render.
+- Seed 2.0 orchestration: used for asset analysis, inspiration relevance scoring, public-video breakdown reports, methodology/template extraction, script generation, storyboard-scene planning, and editing-plan generation.
+- SeedDance 1.5 Pro integration: used for storyboard-scene video generation from script, product context, selected assets, and Seed 2.0 generated prompts.
+- MediaCrawler integration: SellDance can launch MediaCrawler as a backend task, search public Douyin videos, import public metadata, keep crawler logs, support cancellation, and rank results by relevance plus engagement.
+- Compliance-first public-video library: the app stores only public metadata, source links, source declarations, and structured analysis. It does not save, copy, remix, or reuse public videos as project assets.
+- Structured methodology mining: selected public-video analyses are summarized into reusable strategy and factor templates while retaining source IDs and compliance notes.
+- Script versioning: generated scripts are saved as versions, can be refined into new versions, selected for storyboard generation, and deleted from the UI.
+- Storyboard timeline editor: scenes are shown as a horizontal timeline, can be reordered, opened in detail, regenerated, deleted, and previewed as a generated-video sequence.
+- Smart editing agent: plans clip order, scene-to-asset matching, transitions, caption drafts, BGM guidance, and final render settings from storyboard scenes and project assets.
+- Async task status: crawler, inspiration analysis, template generation, script generation, storyboard generation, smart editing, one-click video, and render tasks are surfaced in the floating Status panel.
+- Browser-safe media preview: uploaded MOV/QuickTime or non-H.264 videos keep the original file, while upload-time preview generation can create a 720p H.264 MP4 preview for browser playback. Historical assets are not auto-transcoded on page load.
+- Audio-aware rendering: generated scene audio is preserved by default; uploaded BGM can be mixed under source audio or replace it depending on asset metadata.
+- Local-first persistence: JSON storage keeps the project easy to inspect and portable during development.
 
-- 项目管理：创建、查看、选择、归档带货视频项目。
-- 素材管理：上传商品图片、商品视频、参考素材、Logo 等，自动生成 mock 结构化分析。
-- 脚本工作台：根据商品信息、卖点、目标人群、风格和 Prompt 生成结构化 Script JSON。
-- 脚本版本：支持保存脚本版本、查看版本、选择版本、整体重生成和单 scene 重生成。
-- 分镜编辑：从结构化脚本生成分镜，自动调用 Asset Recall 生成候选素材/slice，并支持编辑时长、旁白、字幕、视觉描述、镜头运动、转场、BGM 提示和素材引用。
-- 智能剪辑：支持 asset_first 和 storyboard_driven 生成 EditingPlan，默认 9:16 且总时长压缩到 15 秒以内。
-- 一键成片：从 EditingPlan 创建视频生成任务，展示状态、进度、当前步骤、错误信息、重试和取消入口。
-- 预览导出：完成后预览 MP4，并展示 9:16、16:9 导出入口。
+## Product Workflow
 
-## 技术栈
+1. Create or select a project with product name, selling points, target audience, platform, style, and duration.
+2. Upload owned product images, videos, audio, and reference material in Assets.
+3. Search public inspiration videos in Script References through MediaCrawler.
+4. Analyze selected public videos with Seed 2.0 and extract a methodology template.
+5. Generate a versioned script from product info, methodology, and compliance constraints.
+6. Generate storyboard scenes and SeedDance-ready prompts from the selected script version.
+7. Generate storyboard scene videos with SeedDance 1.5 Pro.
+8. Use Creation to generate a smart editing plan or run one-click video.
+9. Render the final MP4, preview it in the browser, and export.
 
-- Frontend：React + Vite
-- Backend：Node.js + Express
-- AI 编排：集中在 service/model-provider/agent 边界，默认 mock，可替换为真实 LLM/TTS/视频 adapter
-- 视频渲染：本地 FFmpeg pipeline
-- 数据存储：本地 JSON 文件，位于 `backend/data`
-
-## 项目结构
+## Architecture
 
 ```text
 SellDance/
-├─ AGENTS.md
 ├─ backend/
 │  ├─ src/
-│  │  ├─ routes/
-│  │  ├─ services/
-│  │  └─ config/
-│  ├─ data/
-│  └─ uploads/
+│  │  ├─ agents/                 # agent boundaries for script, storyboard, compliance
+│  │  ├─ providers/              # Seed 2.0 / SeedDance / mock provider clients
+│  │  ├─ routes/                 # Express API routes
+│  │  ├─ services/               # workflow, media, crawler, generation, rendering logic
+│  │  └─ config/                 # env and path configuration
+│  ├─ data/                      # local JSON records
+│  ├─ uploads/                   # uploaded and derived local media
+│  └─ outputs/                   # generated render outputs
 ├─ frontend/
 │  └─ src/
-│     ├─ pages/
-│     ├─ components/
-│     └─ services/
-└─ package.json
+│     ├─ api/                    # API clients
+│     ├─ components/             # reusable UI and media preview components
+│     ├─ pages/                  # Project, Assets, Script, Creation, History
+│     └─ services/               # frontend service facade
+├─ MediaCrawler/                 # sibling crawler project, invoked by backend
+└─ README.md
 ```
 
-## 本地启动
+## Backend Modules
 
-### 1. 安装 FFmpeg
+Key service modules include:
 
-视频渲染需要本地 FFmpeg：
+- `crawler.service`: starts Chrome/CDP, runs MediaCrawler, imports ranked JSONL metadata, tracks logs, timeout, and cancellation.
+- `inspiration-video.service`: stores public-video metadata, source declarations, relevance scores, engagement metrics, and ranking.
+- `video-analysis.service`: creates Seed 2.0 breakdown reports from public-video metadata and optional sampled slices.
+- `inspiration-template.service`: extracts methodology templates from multiple analyzed videos.
+- `script-generation.service`: generates compliant structured scripts from product info and methodology templates.
+- `script.service`: manages current script, versions, refinement, scene regeneration, and language consistency.
+- `storyboard.service`: creates editable storyboard scenes from selected script versions.
+- `storyboard-scene-planning.service`: asks Seed 2.0 to select product/reference assets and write SeedDance prompts per scene.
+- `storyboard-video-generation.service`: runs bounded-concurrency SeedDance scene generation and stores outputs outside the project asset library.
+- `creation-agent.service`: builds smart editing plans from scripts, storyboard scenes, and assets.
+- `video-render.service`: renders final MP4 with FFmpeg, preserves generated scene audio, and supports optional BGM mixing.
+- `asset.service`: manages global/project assets, upload metadata, analysis state, audio metadata, and browser-safe video preview URLs.
 
-```bash
-ffmpeg -version
+## Frontend Experience
+
+The UI is organized around five top-level areas:
+
+- Project: project metadata and active project selection.
+- Assets: project assets, upload, search, AI generated assets, and global asset library.
+- Script: public-video references, methodology extraction, script versions, and storyboard timeline editor.
+- Creation: Smart Editing, One-click Video, and Preview & Export.
+- History: task details and generated-output history.
+
+The interface uses a consistent tabbed workspace pattern instead of long stacked forms. Detail views stay inside the same app route and keep the main navigation visible.
+
+## Public Video Compliance
+
+SellDance treats public videos as inspiration metadata, not reusable media.
+
+The system may store:
+
+- platform and public video ID
+- title, description, author metadata, engagement metrics
+- source URL and source declaration
+- structured breakdown reports
+- extracted abstract strategy and creative factors
+
+The system must not:
+
+- download public videos into the project asset library
+- save or reuse public-video footage as owned material
+- copy subtitles, wording, shot order, music, or unique expression
+- remix or reproduce original public videos
+
+Generated scripts and storyboard prompts may only use abstract strategies and factors.
+
+## AI Providers
+
+SellDance is built around provider boundaries so real APIs and mocks can coexist.
+
+Primary configured providers:
+
+- Seed 2.0 through Volcengine Ark for multimodal analysis and structured JSON planning.
+- SeedDance 1.5 Pro for text/image-to-video storyboard-scene generation.
+- Mock providers for local fallback when real providers are unavailable.
+
+The current implementation reuses the existing unified Seed 2.0 invocation interface. Route handlers and React components do not call provider clients directly.
+
+## MediaCrawler Integration
+
+The backend runs MediaCrawler through a controlled task service:
+
+- starts Chrome/CDP before crawler execution
+- runs `uv run python main.py` in the MediaCrawler directory
+- passes platform, keyword, count, output path, comment flags, and headless settings
+- imports JSONL rows by Douyin search order up to the requested count
+- stores crawler task status, logs, error messages, and result counts
+- supports task cancellation and timeout handling
+- ranks displayed videos by combined Seed 2.0 semantic relevance and engagement score
+
+Chrome startup is environment-sensitive. On headless Linux, `DISPLAY=:99` or an equivalent display server is required if using non-headless Chrome.
+
+## Media Handling Notes
+
+- Uploaded video metadata is probed with `ffprobe`.
+- Browser previews should use `previewUrl` when present.
+- MOV/QuickTime, HEVC, and other browser-unfriendly uploads are not reliable in `<video>` directly.
+- Upload-time preview generation produces a 720p H.264 MP4 preview and keeps the original file for analysis/rendering.
+- Historical assets are not automatically transcoded on list/detail page load to avoid unexpected CPU spikes on servers without GPU acceleration.
+- Seed 2.0 video analysis uses sampled frames instead of sending full videos.
+
+## API Overview
+
+Representative routes:
+
+```text
+GET    /api/projects
+POST   /api/projects
+PATCH  /api/projects/:projectId
+
+GET    /api/projects/:projectId/assets
+POST   /api/projects/:projectId/assets
+POST   /api/projects/:projectId/assets/search
+POST   /api/projects/:projectId/assets/:assetId/analyze
+
+POST   /api/projects/:projectId/inspiration-videos/search
+GET    /api/projects/:projectId/inspiration-videos
+DELETE /api/projects/:projectId/inspiration-videos
+POST   /api/projects/:projectId/inspiration-videos/:videoId/analyze
+POST   /api/projects/:projectId/inspiration-videos/analyze-and-template
+
+POST   /api/projects/:projectId/inspiration-templates/generate
+GET    /api/projects/:projectId/inspiration-templates
+DELETE /api/projects/:projectId/inspiration-templates/:templateId
+
+GET    /api/projects/:projectId/scripts
+POST   /api/projects/:projectId/scripts/generate
+POST   /api/projects/:projectId/scripts/:scriptId/refine
+POST   /api/projects/:projectId/scripts/:scriptId/regenerate
+DELETE /api/projects/:projectId/scripts/:scriptId/versions/:versionId
+
+GET    /api/projects/:projectId/storyboards
+POST   /api/projects/:projectId/storyboards/generate
+PATCH  /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId
+POST   /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId/regenerate
+
+POST   /api/projects/:projectId/creation/smart-edit
+POST   /api/projects/:projectId/creation/one-click
+POST   /api/projects/:projectId/creation/render
+GET    /api/projects/:projectId/creation/tasks
+POST   /api/projects/:projectId/creation/tasks/:taskId/cancel
+POST   /api/projects/:projectId/creation/tasks/:taskId/retry
 ```
 
-如果缺失：
+## Local Setup
 
-- macOS：`brew install ffmpeg`
-- Ubuntu/Debian：`sudo apt-get update && sudo apt-get install -y ffmpeg`
-- Windows：`winget install Gyan.FFmpeg`
-
-### 2. 安装依赖
+Install dependencies:
 
 ```bash
 npm install
@@ -69,183 +194,58 @@ npm install --prefix backend
 npm install --prefix frontend
 ```
 
-### 3. 启动前后端
+Start the full app:
 
 ```bash
 npm run dev
 ```
 
-也可以分别启动：
-
-```bash
-npm run dev:backend
-npm run dev:frontend
-```
-
-默认地址：
+Default URLs:
 
 - Frontend: `http://localhost:5173`
 - Backend API: `http://localhost:4000/api`
 
-## 检查命令
+Run frontend checks:
 
 ```bash
-npm run lint
-npm run build
-npm run test
+npm run build --prefix frontend
+npm run lint --prefix frontend
 ```
 
-当前仓库是 JavaScript 实现，没有独立 `typecheck` 命令。
+Run backend tests:
 
-## Mock 数据说明
+```bash
+npm test --prefix backend
+```
 
-- 项目记录：`backend/data/projects`
-- 素材元数据：`backend/data/assets`
-- AI 素材生成任务：`backend/data/asset-generation-tasks.json`
-- 合规审核记录：`backend/data/compliance-reviews.json`
-- 脚本版本：`backend/data/scripts`
-- 分镜：`backend/data/storyboards`
-- 生成任务：`backend/data/generation-tasks`
-- 上传文件：`backend/uploads`
+Some backend tests use FFmpeg. Avoid running media-transcode-heavy tests on constrained servers.
 
-素材上传后会生成 mock 结构化分析字段：
+## Environment
 
-- 主体 `subject`
-- 类目 `category`
-- 颜色 `colors`
-- 场景 `scene`
-- 风格 `style`
-- 标签 `tags`
-- 摘要 `summary`
-- `embedding` / `vector`
+Create a local `.env` file for real provider access. Do not commit it.
 
-## API 简要说明
-
-### Projects
-
-- `GET /api/projects`
-- `POST /api/projects`
-- `GET /api/projects/:projectId`
-- `PATCH /api/projects/:projectId`
-- `DELETE /api/projects/:projectId`
-
-### Assets
-
-- `GET /api/projects/:projectId/assets`
-- `POST /api/projects/:projectId/assets`
-- `GET /api/projects/:projectId/assets/:assetId`
-- `DELETE /api/projects/:projectId/assets/:assetId`
-- `POST /api/projects/:projectId/assets/generate`
-- `GET /api/projects/:projectId/assets/generation-tasks/:taskId`
-- `POST /api/projects/:projectId/assets/:assetId/reanalyze`
-
-兼容旧接口：
-
-- `GET /api/projects/:projectId/materials`
-- `POST /api/projects/:projectId/materials`
-
-### Scripts
-
-- `GET /api/projects/:projectId/scripts`
-- `POST /api/projects/:projectId/scripts/generate`
-- `PATCH /api/projects/:projectId/scripts/:scriptId`
-- `POST /api/projects/:projectId/scripts/:scriptId/refine`
-- `POST /api/projects/:projectId/scripts/:scriptId/regenerate`
-- `POST /api/projects/:projectId/scripts/:scriptId/scenes/:sceneId/regenerate`
-- `GET /api/projects/:projectId/scripts/:scriptId`
-
-兼容旧接口：
-
-- `GET /api/projects/:projectId/script`
-- `POST /api/projects/:projectId/script/generate`
-- `PUT /api/projects/:projectId/script`
-
-### Storyboards
-
-- `GET /api/projects/:projectId/storyboards`
-- `POST /api/projects/:projectId/storyboards/generate`
-- `PATCH /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId`
-- `POST /api/projects/:projectId/storyboards/:storyboardId/scenes/:sceneId/regenerate`
-- `GET /api/projects/:projectId/storyboards/:storyboardId`
-
-兼容旧接口：
-
-- `GET /api/projects/:projectId/storyboard`
-- `POST /api/projects/:projectId/storyboard/generate`
-- `PUT /api/projects/:projectId/storyboard`
-
-### Generation Tasks
-
-Creation 新接口：
-
-- `POST /api/projects/:projectId/creation/plan`
-- `POST /api/projects/:projectId/creation/render`
-- `GET /api/projects/:projectId/creation/tasks`
-- `GET /api/projects/:projectId/creation/tasks/:taskId`
-- `POST /api/projects/:projectId/creation/tasks/:taskId/retry`
-- `POST /api/projects/:projectId/creation/tasks/:taskId/cancel`
-- `GET /api/projects/:projectId/creation/outputs`
-
-- `GET /api/projects/:projectId/tasks`
-- `POST /api/projects/:projectId/tasks`
-- `GET /api/projects/:projectId/tasks/:taskId`
-- `POST /api/projects/:projectId/tasks/:taskId/retry`
-
-兼容旧接口：
-
-- `GET /api/projects/:projectId/video-tasks`
-- `POST /api/projects/:projectId/video-tasks`
-- `GET /api/video-tasks/:taskId`
-- `POST /api/video-tasks/:taskId/retry`
-
-## Demo 流程
-
-1. 在 Project 页面创建项目，填写商品名、链接/ID、类目、卖点、目标人群、风格、平台和时长。
-2. 在 Materials 页面上传商品主图、视频、参考素材或 Logo。
-3. 查看素材 mock 分析结果和标签。
-4. 在 Script 页面输入 Prompt 并生成脚本。
-5. 使用 refine prompt 微调脚本并保存新版本。
-6. 选择脚本版本后生成分镜。
-7. 在 Storyboard 页面查看 Asset Recall 候选素材/slice，并编辑每个分镜的文案、时长、视觉描述和素材引用。
-8. 在 Video Preview 页面选择 asset_first 或 storyboard_driven，生成 EditingPlan。
-9. 从 EditingPlan 创建渲染任务，查看任务进度、当前步骤、失败错误、重试或取消入口。
-10. 完成后预览视频，并打开 9:16 或 16:9 导出链接。
-
-## 自建素材库与 AI 生成
-
-素材页支持上传素材、mock 生成素材、火山方舟生成素材。无 `ARK_API_KEY` 时会自动 fallback 到 mock provider，保证本地可跑。
-
-在项目根目录新建 `.env`，或在启动后端前设置环境变量：
+Common variables:
 
 ```dotenv
 ARK_API_KEY=your-api-key
-SEED_ENDPOINT_ID=ep-your-seed-2-classifier-endpoint
-SEEDANCE_ENDPOINT_ID=ep-your-seedance-endpoint
-SEEDANCE_MODEL=seedance-1.5-pro
 ARK_BASE_URL=https://ark.cn-beijing.volces.com
+SEED_ENDPOINT_ID=your-seed-2-endpoint-id
+SEEDANCE_ENDPOINT_ID=your-seedance-endpoint-id
+SEEDANCE_MODEL=doubao-seedance-1-5-pro
+AI_ASSET_ANALYSIS_PROVIDER=seed2
 ```
 
-后端启动时会读取项目根目录 `.env`，也兼容 `backend/.env`。火山方舟账号如果不允许直接用模型 ID 调用，请填写控制台中的自定义 Endpoint ID；后端会优先使用 `SEEDANCE_ENDPOINT_ID`，没有配置时才 fallback 到 `SEEDANCE_MODEL`。
+The backend loads environment variables from the project root and backend directory. `.env` is intentionally local-only.
 
-`SEED_ENDPOINT_ID` 用于生成视频前的 Seed 2.0 Prompt 分类/结构化。系统会把项目里的 `productCategory`、`sellingPoints`、`targetAudience`、`style` 与用户 prompt 一起送入分类器，得到 `category/tags/sellingPoints/summary/enhancedPrompt`，再用增强 prompt 调用 Seedance。也兼容更明确的变量名 `SEED_CLASSIFICATION_ENDPOINT_ID`。
+## Operational Notes
 
-素材页的 AI 生成入口仅保留 `seed_dance · 文生视频`。AI 文生图模块已关闭；商品图片仍可通过上传素材入库。
+- Long-running work is modeled as tasks and surfaced in Status.
+- Failed tasks preserve error messages for UI display.
+- Generated storyboard videos are workflow outputs, not project assets.
+- Final rendered videos are served from `/outputs`.
+- Uploaded media and preview derivatives are served from `/uploads`.
+- The repo should not commit `.env`, `AGENTS.md`, `DEVELOPMENT_GUIDE.md`, generated crawler runs, uploads, or render outputs.
 
-脚本、分镜、参考视频分析和模板挖掘默认仍是 mock provider。本地不需要真实模型。后续要接 Seed 2.0 时，必须继续使用 `ARK_API_KEY`、`ARK_BASE_URL`、`SEED_ENDPOINT_ID`，并通过 `backend/src/services/model-provider.service.js` 或 `backend/src/agents/*` 边界调用，不要在 route 或 React 组件中直接调用供应商 client。
+## License
 
-Seed 数据：
-
-```bash
-npm run seed:mock
-```
-
-mock 视频生成依赖 `backend/uploads/demo-product-video.mp4`。seed 脚本会优先尝试用 FFmpeg 自动生成一个 demo MP4；如果失败，请手动放置该文件后重试。
-
-## 源代码仓库
-
-`git@github.com:Hintonein/SellDance.git`
-
-## 后续规划
-
-- P1：素材标签与 Embedding 检索、智能剪辑 Agent、分镜级复杂编辑器、TTS/字幕/BGM、多语言 dubbing、失败重试策略、生成 trace、mock 数据看板、素材切片、局部分镜刷新。
-- P2：多因子归因、Agent 编排、A/B 自动出片对比、CI/CD、可观测性、合规审核流、评论驱动二次创作、爆款视频 DNA 提取、Prompt 市场、投流冷启动加速。
+See `LICENSE`.

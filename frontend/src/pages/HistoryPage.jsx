@@ -1,6 +1,6 @@
 import PageShell from '../components/PageShell';
 
-export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl }) {
+export default function HistoryPage({ tasks, onRetry, onOpenTask, disabled, resolveMediaUrl }) {
   return (
     <PageShell
       title="Generation history"
@@ -38,6 +38,9 @@ export default function HistoryPage({ tasks, onRetry, disabled, resolveMediaUrl 
                     )}
                   </td>
                   <td>
+                    <button type="button" onClick={() => onOpenTask?.(task.id)} disabled={disabled}>
+                      Detail
+                    </button>
                     {task.status === 'failed' ? (
                       <button type="button" onClick={() => onRetry(task.id)} disabled={disabled}>
                         Retry

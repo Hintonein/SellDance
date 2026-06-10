@@ -4,7 +4,6 @@ import { api } from './services/api';
 import ProjectPage from './pages/ProjectPage';
 import MaterialPage from './pages/MaterialPage';
 import ScriptPage from './pages/ScriptPage';
-import StoryboardPage from './pages/StoryboardPage';
 import VideoWorkflowPage from './pages/VideoWorkflowPage';
 import HistoryPage from './pages/HistoryPage';
 
@@ -26,20 +25,20 @@ function resolveMediaUrl(path) {
 }
 
 const pages = [
-  { key: 'projects', label: 'Project Setup' },
+  { key: 'projects', label: 'Project' },
   { key: 'materials', label: 'Assets' },
   { key: 'script', label: 'Script' },
-  { key: 'storyboard', label: 'Storyboard' },
   { key: 'workflow', label: 'Creation' },
+  { key: 'history', label: 'History' },
 ];
 
 const assetGenerationStageLabels = {
-  queued: '正在创建任务',
-  generating: '后端生成中',
-  downloading: '下载中',
-  indexed: '写入素材库',
-  ready: '完成',
-  failed: '失败',
+  queued: 'Queued',
+  generating: 'Generating',
+  downloading: 'Downloading',
+  indexed: 'Indexing assets',
+  ready: 'Completed',
+  failed: 'Failed',
 };
 
 function isAssetGenerationRunning(task) {
@@ -60,8 +59,77 @@ function taskStartedAt(task) {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+function normalizePath(pathname = window.location.pathname) {
+  const path = pathname.replace(/\/+$/, '') || '/projects';
+  return path === '/' ? '/projects' : path;
+}
+
+function parseRoute(pathname = window.location.pathname) {
+  const parts = normalizePath(pathname).split('/').filter(Boolean);
+  if (parts[0] !== 'projects') return { page: 'projects', projectId: '', section: '' };
+  if (!parts[1]) return { page: 'projects', projectId: '', section: '' };
+  const projectId = parts[1];
+  const page = parts[2] || 'projects';
+  return {
+    page: page === 'assets' ? 'materials' : page === 'creation' ? 'workflow' : page,
+    projectId,
+    section: parts[3] || '',
+    detailId: parts[4] || '',
+    rawPage: page,
+  };
+}
+
+function projectPath(projectId, page = 'projects', section = '', detailId = '') {
+  if (!projectId) return '/projects';
+  const pagePath = page === 'materials' ? 'assets' : page === 'workflow' ? 'creation' : page;
+  return ['/projects', projectId, pagePath === 'projects' ? '' : pagePath, section, detailId]
+    .filter(Boolean)
+    .join('/');
+}
+
+function TaskDetailPage({ task, onBack, onRetry, disabled, resolveMediaUrl }) {
+  if (!task) {
+    return (
+      <div className="page-shell">
+        <div className="detail-page-header">
+          <button type="button" onClick={onBack}>Back to History</button>
+          <h2>Task not found</h2>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="page-shell">
+      <div className="detail-page-header">
+        <button type="button" onClick={onBack}>Back to History</button>
+        <div>
+          <h2>Task detail</h2>
+          <p>{task.id}</p>
+        </div>
+      </div>
+      <section className="card section-card">
+        <div className="section-heading">
+          <div>
+            <h3>{task.status}</h3>
+            <p>{task.currentStep || task.stage || 'No current step.'}</p>
+          </div>
+          {task.status === 'failed' ? <button type="button" onClick={() => onRetry(task.id)} disabled={disabled}>Retry</button> : null}
+        </div>
+        <div className="inline-progress"><span style={{ width: `${task.progress || 0}%` }} /></div>
+        <dl className="detail-list">
+          <div><dt>Progress</dt><dd>{task.progress || 0}%</dd></div>
+          <div><dt>Error</dt><dd>{task.errorMessage || task.error?.message || '-'}</dd></div>
+          <div><dt>Created</dt><dd>{task.createdAt || '-'}</dd></div>
+          <div><dt>Updated</dt><dd>{task.updatedAt || '-'}</dd></div>
+          <div><dt>Export</dt><dd>{task.videoUrl ? <a href={resolveMediaUrl(task.videoUrl)} target="_blank" rel="noreferrer">Open MP4</a> : task.exportFile || '-'}</dd></div>
+        </dl>
+      </section>
+    </div>
+  );
+}
+
 function App() {
-  const [activePage, setActivePage] = useState('projects');
+  const [route, setRoute] = useState(() => parseRoute());
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [materials, setMaterials] = useState([]);
@@ -75,8 +143,35 @@ function App() {
   const [message, setMessage] = useState('');
   const [statusPanelOpen, setStatusPanelOpen] = useState(false);
   const [dismissedRenderTaskIds, setDismissedRenderTaskIds] = useState([]);
+  const [dismissedCrawlerTaskIds, setDismissedCrawlerTaskIds] = useState([]);
+  const [dismissedInspirationTaskIds, setDismissedInspirationTaskIds] = useState([]);
+  const [dismissedScriptTaskIds, setDismissedScriptTaskIds] = useState([]);
+  const [dismissedCreationWorkflowTaskIds, setDismissedCreationWorkflowTaskIds] = useState([]);
   const [assetGenerationTask, setAssetGenerationTask] = useState(null);
   const [assetGenerationNow, setAssetGenerationNow] = useState(Date.now());
+  const [inspirationVideos, setInspirationVideos] = useState([]);
+  const [inspirationTemplates, setInspirationTemplates] = useState([]);
+  const [crawlerTask, setCrawlerTask] = useState(null);
+  const [inspirationWorkflowTask, setInspirationWorkflowTask] = useState(null);
+  const [scriptWorkflowTask, setScriptWorkflowTask] = useState(null);
+  const [creationWorkflowTask, setCreationWorkflowTask] = useState(null);
+
+  const activePage = route.page || 'projects';
+  const routeProjectId = route.projectId || '';
+
+  const navigate = useCallback((path) => {
+    const nextPath = normalizePath(path);
+    if (nextPath !== normalizePath(window.location.pathname)) {
+      window.history.pushState({}, '', nextPath);
+    }
+    setRoute(parseRoute(nextPath));
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => setRoute(parseRoute());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId),
@@ -121,13 +216,32 @@ function App() {
     }
   }, [selectedProjectId]);
 
+  useEffect(() => {
+    if (routeProjectId && routeProjectId !== selectedProjectId) {
+      setSelectedProjectId(routeProjectId);
+    }
+  }, [routeProjectId, selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    const current = parseRoute();
+    if (!current.projectId && normalizePath(window.location.pathname) === '/projects') return;
+    if (!current.projectId) navigate(projectPath(selectedProjectId));
+  }, [navigate, selectedProjectId]);
+
   const loadProjectData = async (projectId) => {
-    const [materialsData, globalAssetsData, scriptData, storyboardData, taskData] = await Promise.all([
+    const [materialsData, globalAssetsData, scriptData, storyboardData, taskData, inspirationVideoData, inspirationTemplateData, crawlerTaskData, workflowTaskData, scriptWorkflowTaskData, creationWorkflowTaskData] = await Promise.all([
       api.listAssets(projectId),
       api.listGlobalAssets(),
       api.getScript(projectId),
       api.getStoryboard(projectId),
       api.listTasks(projectId),
+      api.listInspirationVideos(projectId),
+      api.listInspirationTemplates(projectId),
+      api.listCrawlerTasks(projectId),
+      api.listInspirationWorkflowTasks(projectId),
+      api.listScriptWorkflowTasks(projectId),
+      api.listCreationWorkflowTasks(projectId),
     ]);
 
     setMaterials(normalizeAssetsResponse(materialsData));
@@ -138,6 +252,12 @@ function App() {
     setScenes(storyboardData.scenes || []);
     setEditingPlan(null);
     setTasks(taskData);
+    setInspirationVideos(inspirationVideoData);
+    setInspirationTemplates(inspirationTemplateData);
+    setCrawlerTask(crawlerTaskData[0] || null);
+    setInspirationWorkflowTask(workflowTaskData[0] || null);
+    setScriptWorkflowTask(scriptWorkflowTaskData[0] || null);
+    setCreationWorkflowTask(creationWorkflowTaskData[0] || null);
   };
 
   useEffect(() => {
@@ -148,6 +268,136 @@ function App() {
     if (!selectedProjectId) return;
     withToast(() => loadProjectData(selectedProjectId), 'Project data synced.');
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !crawlerTask?.id || ['succeeded', 'partial', 'failed', 'timeout', 'cancelled'].includes(crawlerTask.status)) return undefined;
+    const poll = async () => {
+      try {
+        const next = await api.getCrawlerTask(selectedProjectId, crawlerTask.id);
+        setCrawlerTask(next);
+        if (['succeeded', 'partial'].includes(next.status)) {
+          setInspirationVideos(await api.listInspirationVideos(selectedProjectId));
+          setMessage(`MediaCrawler search completed. Imported ${next.resultCount || 0} videos.`);
+        }
+        if (['failed', 'timeout', 'cancelled'].includes(next.status)) {
+          setMessage(next.error?.message || 'MediaCrawler search failed.');
+        }
+      } catch (error) {
+        setMessage(error.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 1600);
+    return () => clearInterval(timer);
+  }, [selectedProjectId, crawlerTask?.id, crawlerTask?.status]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !inspirationVideos.some((video) => video.analysisStatus === 'processing')) return undefined;
+    const poll = async () => {
+      try {
+        setInspirationVideos(await api.listInspirationVideos(selectedProjectId));
+      } catch {
+        // silent polling
+      }
+    };
+    const timer = setInterval(poll, 1800);
+    return () => clearInterval(timer);
+  }, [selectedProjectId, inspirationVideos]);
+
+  useEffect(() => {
+    if (!inspirationWorkflowTask?.id?.startsWith('local_analysis_')) return;
+    if (inspirationVideos.some((video) => video.analysisStatus === 'processing')) return;
+    setInspirationWorkflowTask((prev) => prev?.id?.startsWith('local_analysis_') ? {
+      ...prev,
+      status: 'completed',
+      stage: 'completed',
+      progress: 100,
+      completed: 1,
+    } : prev);
+  }, [inspirationVideos, inspirationWorkflowTask?.id]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !inspirationWorkflowTask?.id || inspirationWorkflowTask.id.startsWith('local_') || ['completed', 'failed'].includes(inspirationWorkflowTask.status)) return undefined;
+    const poll = async () => {
+      try {
+        const next = await api.getInspirationWorkflowTask(selectedProjectId, inspirationWorkflowTask.id);
+        setInspirationWorkflowTask(next);
+        setInspirationVideos(await api.listInspirationVideos(selectedProjectId));
+        if (next.status === 'completed') {
+          setInspirationTemplates(await api.listInspirationTemplates(selectedProjectId));
+          setMessage('Inspiration analysis and template generation completed.');
+        }
+        if (next.status === 'failed') {
+          setMessage(next.error?.message || 'Inspiration workflow failed.');
+        }
+      } catch (error) {
+        setMessage(error.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 1800);
+    return () => clearInterval(timer);
+  }, [selectedProjectId, inspirationWorkflowTask?.id, inspirationWorkflowTask?.status]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !scriptWorkflowTask?.id || ['completed', 'partial', 'failed'].includes(scriptWorkflowTask.status)) return undefined;
+    const poll = async () => {
+      try {
+        const next = await api.getScriptWorkflowTask(selectedProjectId, scriptWorkflowTask.id);
+        setScriptWorkflowTask(next);
+        if (['completed', 'partial'].includes(next.status)) {
+          const [currentScript, currentStoryboard] = await Promise.all([
+            api.getScript(selectedProjectId),
+            api.getStoryboard(selectedProjectId),
+          ]);
+          setScriptRecord(currentScript?.scriptId || currentScript?.id ? currentScript : null);
+          setScriptText(currentScript?.scriptText || '');
+          setStoryboardRecord(currentStoryboard?.storyboardId || currentStoryboard?.id ? currentStoryboard : null);
+          setScenes(currentStoryboard?.scenes || []);
+          setEditingPlan(next.result?.editingPlan || null);
+          setMessage(`${next.label || 'Script workflow'} completed.`);
+        }
+        if (next.status === 'failed') {
+          setMessage(next.error?.message || 'Script workflow failed.');
+        }
+      } catch (error) {
+        setMessage(error.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 1800);
+    return () => clearInterval(timer);
+  }, [selectedProjectId, scriptWorkflowTask?.id, scriptWorkflowTask?.status]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !creationWorkflowTask?.id || ['completed', 'failed'].includes(creationWorkflowTask.status)) return undefined;
+    const poll = async () => {
+      try {
+        const next = await api.getCreationWorkflowTask(selectedProjectId, creationWorkflowTask.id);
+        setCreationWorkflowTask(next);
+        if (['completed', 'failed'].includes(next.status)) {
+          const [currentScript, currentStoryboard, renderTasks] = await Promise.all([
+            api.getScript(selectedProjectId),
+            api.getStoryboard(selectedProjectId),
+            api.listTasks(selectedProjectId),
+          ]);
+          setScriptRecord(currentScript?.scriptId || currentScript?.id ? currentScript : null);
+          setScriptText(currentScript?.scriptText || '');
+          setStoryboardRecord(currentStoryboard?.storyboardId || currentStoryboard?.id ? currentStoryboard : null);
+          setScenes(currentStoryboard?.scenes || []);
+          setTasks(renderTasks);
+          if (next.result?.editingPlan) setEditingPlan(next.result.editingPlan);
+          if (next.status === 'completed') setMessage(next.type === 'smart_editing' ? 'Smart editing plan completed.' : 'One-click video completed.');
+          if (next.status === 'failed') setMessage(next.error?.message || 'Creation workflow failed.');
+        }
+      } catch (error) {
+        setMessage(error.message);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  }, [creationWorkflowTask?.id, creationWorkflowTask?.status, selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -214,6 +464,10 @@ function App() {
   const selectedProjectGenerationTask = assetGenerationTask?.projectId === selectedProjectId ? assetGenerationTask : null;
   const isSelectedProjectGenerating = isAssetGenerationRunning(selectedProjectGenerationTask) || selectedProjectGenerationTask?.id === 'pending';
   const visibleStatusTask = tasks.find((task) => !dismissedRenderTaskIds.includes(task.id || task.taskId));
+  const visibleCrawlerTask = crawlerTask?.id && !dismissedCrawlerTaskIds.includes(crawlerTask.id) ? crawlerTask : null;
+  const visibleInspirationTask = inspirationWorkflowTask?.id && !dismissedInspirationTaskIds.includes(inspirationWorkflowTask.id) ? inspirationWorkflowTask : null;
+  const visibleScriptTask = scriptWorkflowTask?.id && !dismissedScriptTaskIds.includes(scriptWorkflowTask.id) ? scriptWorkflowTask : null;
+  const visibleCreationWorkflowTask = creationWorkflowTask?.id && !dismissedCreationWorkflowTaskIds.includes(creationWorkflowTask.id) ? creationWorkflowTask : null;
 
   return (
     <div className="layout">
@@ -228,7 +482,8 @@ function App() {
               key={page.key}
               type="button"
               className={activePage === page.key ? 'active' : ''}
-              onClick={() => setActivePage(page.key)}
+              onClick={() => navigate(projectPath(selectedProjectId, page.key))}
+              disabled={page.key !== 'projects' && !selectedProjectId}
             >
               {page.label}
             </button>
@@ -257,7 +512,7 @@ function App() {
                 ) : null}
                 {assetGenerationTask.error ? <small>{assetGenerationTask.error}</small> : null}
               </div>
-            ) : <small>No AI asset generation task.</small>}
+            ) : null}
             {visibleStatusTask ? (
               <div className="global-task">
                 <div className="global-task-header">
@@ -267,29 +522,121 @@ function App() {
                 <div className="inline-progress"><span style={{ width: `${visibleStatusTask.progress || 0}%` }} /></div>
                 <div className="global-task-meta">
                   <span>{visibleStatusTask.progress || 0}%</span>
-                  <button type="button" onClick={() => setActivePage('history')}>History</button>
+                  {visibleStatusTask.audioMixSummary ? <span>{visibleStatusTask.audioMixSummary}</span> : null}
+                  {visibleStatusTask.backgroundMusicMixMode ? <span>{String(visibleStatusTask.backgroundMusicMixMode).replace(/_/g, ' ')}</span> : null}
+                  <button type="button" onClick={() => navigate(projectPath(selectedProjectId, 'history'))}>History</button>
                 </div>
                 {['completed', 'failed', 'canceled', 'cancelled'].includes(visibleStatusTask.status) ? (
                   <button type="button" onClick={() => setDismissedRenderTaskIds((prev) => [...prev, visibleStatusTask.id || visibleStatusTask.taskId])}>Close</button>
                 ) : null}
               </div>
-            ) : <small>No render task yet.</small>}
+            ) : null}
+            {visibleCrawlerTask ? (
+              <div className="global-task">
+                <div className="global-task-header">
+                  <strong>Public video search</strong>
+                  <span>{visibleCrawlerTask.status}</span>
+                </div>
+                <div className="inline-progress"><span style={{ width: `${visibleCrawlerTask.progress || (['succeeded', 'partial'].includes(visibleCrawlerTask.status) ? 100 : 0)}%` }} /></div>
+                <div className="global-task-meta">
+                  <span>{visibleCrawlerTask.resultCount || 0} imported</span>
+                  <span>{visibleCrawlerTask.rankingFallback ? 'Fallback ranking' : 'Ranked'}</span>
+                </div>
+                {['running', 'queued'].includes(visibleCrawlerTask.status) ? (
+                  <button type="button" onClick={() => api.cancelCrawlerTask(selectedProjectId, visibleCrawlerTask.id).then(setCrawlerTask).catch((error) => setMessage(error.message))}>Stop search</button>
+                ) : null}
+                {['succeeded', 'partial', 'failed', 'timeout', 'cancelled'].includes(visibleCrawlerTask.status) ? (
+                  <button type="button" onClick={() => setDismissedCrawlerTaskIds((prev) => [...prev, visibleCrawlerTask.id])}>Dismiss</button>
+                ) : null}
+              </div>
+            ) : null}
+            {visibleInspirationTask ? (
+              <div className="global-task">
+                <div className="global-task-header">
+                  <strong>Inspiration workflow</strong>
+                  <span>{visibleInspirationTask.stage || visibleInspirationTask.status}</span>
+                </div>
+                <div className="inline-progress"><span style={{ width: `${visibleInspirationTask.progress || 0}%` }} /></div>
+                <div className="global-task-meta">
+                  <span>{visibleInspirationTask.completed || 0}/{visibleInspirationTask.total || 0}</span>
+                  <span>{visibleInspirationTask.failed || 0} failed</span>
+                </div>
+                {visibleInspirationTask.currentVideoIds?.length ? (
+                  <small>{visibleInspirationTask.currentVideoIds.join(', ')}</small>
+                ) : visibleInspirationTask.currentVideoId ? <small>{visibleInspirationTask.currentVideoId}</small> : null}
+                {visibleInspirationTask.error ? <small>{visibleInspirationTask.error.message}</small> : null}
+                {['completed', 'failed'].includes(visibleInspirationTask.status) ? (
+                  <button type="button" onClick={() => setDismissedInspirationTaskIds((prev) => [...prev, visibleInspirationTask.id])}>Dismiss</button>
+                ) : null}
+              </div>
+            ) : null}
+            {visibleScriptTask ? (
+              <div className="global-task">
+                <div className="global-task-header">
+                  <strong>{visibleScriptTask.label || 'Script workflow'}</strong>
+                  <span>{visibleScriptTask.stage || visibleScriptTask.status}</span>
+                </div>
+                <div className="inline-progress"><span style={{ width: `${visibleScriptTask.progress || 0}%` }} /></div>
+                {visibleScriptTask.error ? <small>{visibleScriptTask.error.message}</small> : null}
+                {visibleScriptTask.logs?.length ? <small>{visibleScriptTask.logs.at(-1).message}</small> : null}
+                {visibleScriptTask.totalScenes ? (
+                  <div className="global-task-meta">
+                    <span>{visibleScriptTask.completedScenes || 0}/{visibleScriptTask.totalScenes} scenes</span>
+                    <span>{visibleScriptTask.runningScenes || 0} running</span>
+                    <span>{visibleScriptTask.failedScenes || 0} failed</span>
+                  </div>
+                ) : null}
+                {visibleScriptTask.planningScenes ? (
+                  <div className="global-task-meta">
+                    <span>{visibleScriptTask.plannedScenes || 0}/{visibleScriptTask.planningScenes} planned</span>
+                    <span>{visibleScriptTask.planningProvider || 'seed2'}</span>
+                    <span>{visibleScriptTask.lowConfidenceScenes?.length || 0} low confidence</span>
+                  </div>
+                ) : null}
+                {visibleScriptTask.currentSceneIds?.length ? <small>Current: {visibleScriptTask.currentSceneIds.join(', ')}</small> : null}
+                {['completed', 'partial', 'failed'].includes(visibleScriptTask.status) ? (
+                  <button type="button" onClick={() => setDismissedScriptTaskIds((prev) => [...prev, visibleScriptTask.id])}>Dismiss</button>
+                ) : null}
+              </div>
+            ) : null}
+            {visibleCreationWorkflowTask ? (
+              <div className="global-task">
+                <div className="global-task-header">
+                  <strong>{visibleCreationWorkflowTask.label || 'Creation workflow'}</strong>
+                  <span>{visibleCreationWorkflowTask.stage || visibleCreationWorkflowTask.status}</span>
+                </div>
+                <div className="inline-progress"><span style={{ width: `${visibleCreationWorkflowTask.progress || 0}%` }} /></div>
+                <div className="global-task-meta">
+                  <span>{visibleCreationWorkflowTask.progress || 0}%</span>
+                  <span>{visibleCreationWorkflowTask.renderTaskId ? `Render ${visibleCreationWorkflowTask.renderTaskId}` : visibleCreationWorkflowTask.type}</span>
+                </div>
+                {visibleCreationWorkflowTask.error ? <small>{visibleCreationWorkflowTask.error.message}</small> : null}
+                {visibleCreationWorkflowTask.logs?.length ? <small>{visibleCreationWorkflowTask.logs.at(-1).message}</small> : null}
+                {['completed', 'failed'].includes(visibleCreationWorkflowTask.status) ? (
+                  <button type="button" onClick={() => setDismissedCreationWorkflowTaskIds((prev) => [...prev, visibleCreationWorkflowTask.id])}>Dismiss</button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
-        {message ? <div className="message">{message}</div> : null}
       </aside>
 
       <main>
+        {message ? <div className="toast-message">{message}</div> : null}
         {activePage === 'projects' ? (
           <ProjectPage
             projects={projects}
             selectedProjectId={selectedProjectId}
-            onSelect={setSelectedProjectId}
+            onSelect={(projectId) => {
+              setSelectedProjectId(projectId);
+              navigate(projectPath(projectId));
+            }}
             onCreate={(payload) =>
               withToast(async () => {
                 const created = await api.createProject(payload);
                 await loadProjects();
                 setSelectedProjectId(created.id);
+                navigate(projectPath(created.id));
               }, 'Project created.')
             }
             onArchive={(projectId) =>
@@ -384,6 +731,11 @@ function App() {
             generationTask={selectedProjectGenerationTask}
             isGenerating={isSelectedProjectGenerating}
             generationElapsedLabel={assetGenerationElapsedLabel}
+            section={route.section || 'project'}
+            onNavigateSection={(section) => navigate(projectPath(selectedProjectId, 'materials', section))}
+            assetRouteId={activePage === 'materials' && route.section === 'detail' ? route.detailId : ''}
+            onOpenAsset={(assetId) => navigate(projectPath(selectedProjectId, 'materials', 'detail', assetId))}
+            onBackToAssets={() => navigate(projectPath(selectedProjectId, 'materials', 'project'))}
             onReanalyze={(assetId) =>
               withToast(async () => {
                 const analyzed = await api.reanalyzeAsset(selectedProjectId, assetId);
@@ -398,7 +750,17 @@ function App() {
         {activePage === 'script' ? (
           <ScriptPage
             disabled={disabled}
+            section={route.section || 'overview'}
+            detailId={route.detailId || ''}
+            onNavigateSection={(section) => navigate(projectPath(selectedProjectId, 'script', section))}
+            onNavigateStoryboardScene={(sceneId) => navigate(projectPath(selectedProjectId, 'script', 'storyboard', sceneId))}
+            onBackToStoryboard={() => navigate(projectPath(selectedProjectId, 'script', 'storyboard'))}
             scriptText={scriptText}
+            storyboardRecord={storyboardRecord}
+            storyboardScenes={scenes}
+            materials={materials}
+            resolveMediaUrl={resolveMediaUrl}
+            scriptWorkflowTask={scriptWorkflowTask}
             onScriptChange={setScriptText}
             onScriptSceneUpdate={(index, key, value) =>
               setScriptRecord((prev) => {
@@ -409,6 +771,14 @@ function App() {
                 return { ...prev, scenes: scenesNext };
               })
             }
+            onStoryboardSceneUpdate={(index, key, value) => {
+              setScenes((prev) => prev.map((scene, sceneIndex) => (sceneIndex === index ? { ...scene, [key]: value } : scene)));
+              setStoryboardRecord((prev) => {
+                if (!prev) return prev;
+                const scenesNext = (prev.scenes || []).map((scene, sceneIndex) => (sceneIndex === index ? { ...scene, [key]: value } : scene));
+                return { ...prev, scenes: scenesNext };
+              });
+            }}
             onGenerate={(payload) =>
               withToast(async () => {
                 const generated = await api.generateScript(selectedProjectId, payload);
@@ -422,17 +792,13 @@ function App() {
             scriptRecord={scriptRecord}
             onRefine={(prompt) =>
               withToast(async () => {
-                const refined = await api.refineScript(
-                  selectedProjectId,
-                  scriptRecord?.scriptId || scriptRecord?.id,
-                  prompt
-                );
-                setScriptRecord(refined);
-                setScriptText(refined.scriptText || '');
-                setStoryboardRecord(null);
-                setScenes([]);
-                setEditingPlan(null);
-              }, 'Script refined.')
+                const task = await api.createScriptWorkflowTask(selectedProjectId, {
+                  type: 'refine_script',
+                  scriptId: scriptRecord?.scriptId || scriptRecord?.id,
+                  prompt,
+                });
+                setScriptWorkflowTask(task);
+              }, 'Script refinement started.')
             }
             onSelectVersion={(version) => {
               setScriptText(version.scriptText || '');
@@ -446,6 +812,78 @@ function App() {
                 setScriptRecord(saved);
                 setScriptText(saved.scriptText || scriptText);
               }, 'Script saved.')
+            }
+            onDeleteVersion={(versionId) =>
+              withToast(async () => {
+                const saved = await api.deleteScriptVersion(selectedProjectId, scriptRecord?.scriptId || scriptRecord?.id, versionId);
+                setScriptRecord(saved);
+                setScriptText(saved.scriptText || '');
+              }, 'Script version deleted.')
+            }
+            onGenerateStoryboard={(storyboardInput = {}) =>
+              withToast(async () => {
+                const task = await api.createScriptWorkflowTask(selectedProjectId, {
+                  type: 'generate_storyboard',
+                  scriptId: scriptRecord?.scriptId || scriptRecord?.id,
+                  scriptVersionId: storyboardInput.scriptVersionId || scriptRecord?.selectedVersionId,
+                  scriptText: storyboardInput.scriptText || scriptText,
+                  scenes: storyboardInput.scenes || scriptRecord?.scenes || [],
+                  aspectRatio: '9:16',
+                  provider: 'seedance_1_5_pro_video',
+                  sceneConcurrency: 3,
+                  createEditingPlan: true,
+                });
+                setStoryboardRecord(null);
+                setScenes([]);
+                setEditingPlan(null);
+                setScriptWorkflowTask(task);
+              }, 'Storyboard generation started.')
+            }
+            onDeleteStoryboard={() =>
+              withToast(async () => {
+                if (!storyboardRecord?.storyboardId && !storyboardRecord?.id) return;
+                await api.deleteStoryboard(selectedProjectId, storyboardRecord.storyboardId || storyboardRecord.id);
+                setStoryboardRecord(null);
+                setScenes([]);
+                setEditingPlan(null);
+              }, 'Storyboard deleted.')
+            }
+            onSaveStoryboardScene={(sceneId, payload) =>
+              withToast(async () => {
+                const storyboardId = storyboardRecord?.storyboardId || storyboardRecord?.id;
+                const saved = await api.updateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+                setEditingPlan(null);
+              }, 'Storyboard scene saved.')
+            }
+            onRegenerateStoryboardScene={(sceneId, payload) =>
+              withToast(async () => {
+                const storyboardId = storyboardRecord?.storyboardId || storyboardRecord?.id;
+                const saved = await api.regenerateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+                setEditingPlan(null);
+              }, 'Storyboard scene regenerated.')
+            }
+            onDeleteStoryboardScene={(sceneId) =>
+              withToast(async () => {
+                const storyboardId = storyboardRecord?.storyboardId || storyboardRecord?.id;
+                const saved = await api.deleteStoryboardScene(selectedProjectId, storyboardId, sceneId);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+                setEditingPlan(null);
+                navigate(projectPath(selectedProjectId, 'script', 'storyboard'));
+              }, 'Storyboard scene deleted.')
+            }
+            onReorderStoryboardScenes={(sceneIds) =>
+              withToast(async () => {
+                const storyboardId = storyboardRecord?.storyboardId || storyboardRecord?.id;
+                const saved = await api.reorderStoryboardScenes(selectedProjectId, storyboardId, sceneIds);
+                setStoryboardRecord(saved);
+                setScenes(saved.scenes || []);
+                setEditingPlan(null);
+              }, 'Storyboard reordered.')
             }
             onSceneRegenerate={(sceneId, payload) =>
               withToast(async () => {
@@ -462,55 +900,74 @@ function App() {
                 setEditingPlan(null);
               }, 'Script scene regenerated.')
             }
-          />
-        ) : null}
-
-        {activePage === 'storyboard' ? (
-          <StoryboardPage
-            disabled={disabled}
-            scriptText={scriptText}
-            scriptRecord={scriptRecord}
-            storyboard={storyboardRecord}
-            scenes={scenes}
-            materials={materials}
-            onGenerate={(payload) =>
-              withToast(async () => {
-                const generated = await api.generateStoryboard(selectedProjectId, payload);
-                setStoryboardRecord(generated);
-                setScenes(generated.scenes || []);
-                setEditingPlan(null);
-              }, 'Storyboard generated.')
-            }
-            onSceneUpdate={(index, key, value) =>
-              setScenes((prev) =>
-                prev.map((scene, sceneIndex) =>
-                  sceneIndex === index ? { ...scene, [key]: value } : scene
-                )
-              )
-            }
-            onSave={() =>
-              withToast(async () => {
-                const saved = await api.saveStoryboard(selectedProjectId, scenes);
-                setStoryboardRecord(saved);
-                setEditingPlan(null);
-              }, 'Storyboard saved.')
-            }
-            onSceneSave={(storyboardId, sceneId, payload) =>
-              withToast(async () => {
-                const saved = await api.updateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
-                setStoryboardRecord(saved);
-                setScenes(saved.scenes || []);
-                setEditingPlan(null);
-              }, 'Storyboard scene saved.')
-            }
-            onSceneRegenerate={(storyboardId, sceneId, payload) =>
-              withToast(async () => {
-                const saved = await api.regenerateStoryboardScene(selectedProjectId, storyboardId, sceneId, payload);
-                setStoryboardRecord(saved);
-                setScenes(saved.scenes || []);
-                setEditingPlan(null);
-              }, 'Storyboard scene regenerated.')
-            }
+            inspirationProps={{
+              videos: inspirationVideos,
+              templates: inspirationTemplates,
+              crawlerTask,
+              onRefresh: () =>
+                withToast(async () => {
+                  await api.clearInspirationVideos(selectedProjectId);
+                  setInspirationVideos([]);
+                }, 'Inspiration video library cleared.'),
+              onCancelSearch: () =>
+                withToast(async () => {
+                  if (!crawlerTask?.id) return;
+                  const next = await api.cancelCrawlerTask(selectedProjectId, crawlerTask.id);
+                  setCrawlerTask(next);
+                  setInspirationVideos(await api.listInspirationVideos(selectedProjectId));
+                }, 'Search cancellation requested.'),
+              onSearch: (payload) =>
+                withToast(async () => {
+                  const result = await api.searchInspirationVideos(selectedProjectId, payload);
+                  setCrawlerTask(result.task || { id: result.taskId, status: result.status });
+                }, 'MediaCrawler search started.'),
+              onAnalyze: (videoId) =>
+                withToast(async () => {
+                  setInspirationWorkflowTask({
+                    id: `local_analysis_${videoId}`,
+                    status: 'running',
+                    stage: 'video_analysis',
+                    progress: 15,
+                    total: 1,
+                    completed: 0,
+                    failed: 0,
+                    currentVideoId: videoId,
+                  });
+                  await api.analyzeInspirationVideo(selectedProjectId, videoId);
+                  setInspirationVideos(await api.listInspirationVideos(selectedProjectId));
+                  setInspirationWorkflowTask((prev) => prev?.id === `local_analysis_${videoId}` ? {
+                    ...prev,
+                    status: 'running',
+                    stage: 'video_analysis',
+                    progress: 45,
+                  } : prev);
+                }, 'Video analysis started.'),
+              onAnalyzeAndTemplate: (payload) =>
+                withToast(async () => {
+                  const task = await api.analyzeAndTemplateInspirationVideos(selectedProjectId, payload);
+                  setInspirationWorkflowTask(task);
+                }, 'Deep analysis and template workflow started.'),
+              onDeleteTemplate: (templateId) =>
+                withToast(async () => {
+                  await api.deleteInspirationTemplate(selectedProjectId, templateId);
+                  setInspirationTemplates(await api.listInspirationTemplates(selectedProjectId));
+                }, 'Inspiration template deleted.'),
+              onGenerateScript: (payload) =>
+                (async () => {
+                  try {
+                    const task = await api.createScriptWorkflowTask(selectedProjectId, {
+                      type: 'generate_script',
+                      ...payload,
+                    });
+                    setScriptWorkflowTask(task);
+                    setMessage('Script generation started.');
+                    return task;
+                  } catch (error) {
+                    setMessage(error.message);
+                    throw error;
+                  }
+                })(),
+            }}
           />
         ) : null}
 
@@ -519,14 +976,23 @@ function App() {
             disabled={disabled}
             scenes={scenes}
             materials={materials}
+            scriptRecord={scriptRecord}
+            storyboardRecord={storyboardRecord}
             latestTask={tasks[0]}
+            workflowTask={creationWorkflowTask}
             editingPlan={editingPlan}
             resolveMediaUrl={resolveMediaUrl}
-            onCreatePlan={(payload) =>
+            onSmartEdit={(payload) =>
               withToast(async () => {
-                const plan = await api.createEditingPlan(selectedProjectId, payload);
-                setEditingPlan(plan);
-              }, 'Editing plan created.')
+                const task = await api.createSmartEditingPlan(selectedProjectId, payload);
+                setCreationWorkflowTask(task);
+              }, 'Smart editing workflow started.')
+            }
+            onOneClick={(payload) =>
+              withToast(async () => {
+                const task = await api.createOneClickVideo(selectedProjectId, payload);
+                setCreationWorkflowTask(task);
+              }, 'One-click video workflow started.')
             }
             onRenderPlan={(payload) =>
               withToast(async () => {
@@ -550,17 +1016,33 @@ function App() {
         ) : null}
 
         {activePage === 'history' ? (
-          <HistoryPage
-            disabled={disabled}
-            tasks={tasks}
-            resolveMediaUrl={resolveMediaUrl}
-            onRetry={(taskId) =>
-              withToast(async () => {
-                await api.retryTask(taskId);
-                setTasks(await api.listTasks(selectedProjectId));
-              }, 'Task retried.')
-            }
-          />
+          route.section ? (
+            <TaskDetailPage
+              disabled={disabled}
+              task={tasks.find((task) => task.id === route.section || task.taskId === route.section)}
+              resolveMediaUrl={resolveMediaUrl}
+              onBack={() => navigate(projectPath(selectedProjectId, 'history'))}
+              onRetry={(taskId) =>
+                withToast(async () => {
+                  await api.retryTask(taskId);
+                  setTasks(await api.listTasks(selectedProjectId));
+                }, 'Task retried.')
+              }
+            />
+          ) : (
+            <HistoryPage
+              disabled={disabled}
+              tasks={tasks}
+              resolveMediaUrl={resolveMediaUrl}
+              onOpenTask={(taskId) => navigate(projectPath(selectedProjectId, 'history', taskId))}
+              onRetry={(taskId) =>
+                withToast(async () => {
+                  await api.retryTask(taskId);
+                  setTasks(await api.listTasks(selectedProjectId));
+                }, 'Task retried.')
+              }
+            />
+          )
         ) : null}
       </main>
     </div>

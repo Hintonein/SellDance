@@ -14,4 +14,5 @@ export const scriptsApi = {
   refine: (projectId, scriptId, prompt) => request(`/projects/${projectId}/scripts/${scriptId}/refine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) }),
   regenerate: (projectId, scriptId, payload) => request(`/projects/${projectId}/scripts/${scriptId}/regenerate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   regenerateScene: (projectId, scriptId, sceneId, payload) => request(`/projects/${projectId}/scripts/${scriptId}/scenes/${sceneId}/regenerate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  deleteVersion: (projectId, scriptId, versionId) => request(`/projects/${projectId}/scripts/${scriptId}/versions/${versionId}`, { method: 'DELETE' }),
 };

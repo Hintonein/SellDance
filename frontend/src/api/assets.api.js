@@ -6,7 +6,7 @@ export const assetsApi = {
   removeGlobal: (assetId) => request(`/assets/${assetId}`, { method: 'DELETE' }),
   list: (projectId, params = {}) => request(`/projects/${projectId}/assets${toQuery(params)}`),
   get: (projectId, assetId) => request(`/projects/${projectId}/assets/${assetId}`),
-  upload: async (projectId, { file, title, type, source, tags, metadata, description }) => {
+  upload: async (projectId, { file, title, type, source, tags, metadata, description, audioKind, backgroundMusicMixMode, backgroundMusicVolume }) => {
     const formData = new FormData();
     formData.append('file', file);
     if (title) formData.append('title', title);
@@ -14,6 +14,9 @@ export const assetsApi = {
     if (source) formData.append('source', source);
     if (tags) formData.append('tags', Array.isArray(tags) ? tags.join(',') : tags);
     if (description) formData.append('description', description);
+    if (audioKind) formData.append('audioKind', audioKind);
+    if (backgroundMusicMixMode) formData.append('backgroundMusicMixMode', backgroundMusicMixMode);
+    if (backgroundMusicVolume !== undefined && backgroundMusicVolume !== null) formData.append('backgroundMusicVolume', String(backgroundMusicVolume));
     if (metadata) formData.append('metadata', typeof metadata === 'string' ? metadata : JSON.stringify(metadata));
     return request(`/projects/${projectId}/assets`, { method: 'POST', body: formData });
   },

@@ -3,6 +3,7 @@ const DEFAULT_SEEDREAM_MODEL = process.env.SEEDREAM_MODEL || 'doubao-seedream-4.
 const DEFAULT_ARK_BASE_URL = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com';
 const DEFAULT_POLL_ATTEMPTS = Number(process.env.ARK_POLL_ATTEMPTS || 120);
 const DEFAULT_POLL_INTERVAL_MS = Number(process.env.ARK_POLL_INTERVAL_MS || 5000);
+const DEFAULT_SEEDANCE_SUPPORTED_DURATIONS = '5,10';
 
 function hasArkApiKey() {
   return Boolean(process.env.ARK_API_KEY);
@@ -227,20 +228,45 @@ function normalizeReferenceImages(referenceImages = []) {
     .slice(0, 2);
 }
 
+function parseSupportedDurations(value = process.env.SEEDANCE_SUPPORTED_DURATIONS || DEFAULT_SEEDANCE_SUPPORTED_DURATIONS) {
+  const durations = String(value || '')
+    .split(',')
+    .map((item) => Number(String(item).trim()))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .sort((a, b) => a - b);
+  return durations.length ? durations : [5, 10];
+}
+
+function normalizeSeedanceDurationSec(durationSec) {
+  const requested = Number(durationSec);
+  const supported = parseSupportedDurations();
+  if (!Number.isFinite(requested) || requested <= 0) return supported[0];
+  const rounded = Math.ceil(requested);
+  return supported.find((duration) => duration >= rounded) || supported[supported.length - 1];
+}
+
 async function generateVideoWithSeedance({ prompt, durationSec = 5, ratio = '9:16', model = DEFAULT_SEEDANCE_MODEL, referenceImages = [] }) {
   const normalizedReferenceImages = normalizeReferenceImages(referenceImages);
+  const normalizedDurationSec = normalizeSeedanceDurationSec(durationSec);
+  const requestedDurationSec = Number(durationSec);
   if (process.env.ARK_MOCK_REMOTE_URL) {
-    return { remoteUrl: process.env.ARK_MOCK_REMOTE_URL, model, raw: { mocked: true, referenceImages: normalizedReferenceImages.length } };
+    return {
+      remoteUrl: process.env.ARK_MOCK_REMOTE_URL,
+      model,
+      durationSec: normalizedDurationSec,
+      requestedDurationSec: Number.isFinite(requestedDurationSec) ? requestedDurationSec : null,
+      raw: { mocked: true, referenceImages: normalizedReferenceImages.length },
+    };
   }
   const referenceHint = normalizedReferenceImages.length
-    ? ` Reference images: ${normalizedReferenceImages.map((item) => item.role).join(', ')}. Use first_frame as the opening frame and last_frame as the ending frame when provided.`
+    ? ` Reference images: ${normalizedReferenceImages.map((item) => item.role).join(', ')}. Use provided images as visual and product references according to the prompt. Do not force them as first or last frame unless explicitly requested.`
     : '';
   const payload = {
     model,
     content: [
       {
         type: 'text',
-        text: `${prompt}${referenceHint} --ratio ${ratio} --duration ${durationSec}`,
+        text: `${prompt}${referenceHint} --ratio ${ratio} --duration ${normalizedDurationSec}`,
       },
       ...normalizedReferenceImages.map((item) => ({
         type: 'image_url',
@@ -251,12 +277,24 @@ async function generateVideoWithSeedance({ prompt, durationSec = 5, ratio = '9:1
   const data = await postArkGeneration(payload);
   const remoteUrl = extractRemoteUrl(data);
   if (remoteUrl) {
-    return { remoteUrl, model, raw: data };
+    return {
+      remoteUrl,
+      model,
+      durationSec: normalizedDurationSec,
+      requestedDurationSec: Number.isFinite(requestedDurationSec) ? requestedDurationSec : null,
+      raw: data,
+    };
   }
   const taskId = extractTaskId(data);
   if (taskId) {
     const completed = await waitForArkVideoUrl(taskId);
-    return { ...completed, model, taskId };
+    return {
+      ...completed,
+      model,
+      taskId,
+      durationSec: normalizedDurationSec,
+      requestedDurationSec: Number.isFinite(requestedDurationSec) ? requestedDurationSec : null,
+    };
   }
   if (!remoteUrl) {
     throw new Error(`Volcengine Ark response did not include a downloadable video URL or task id. Payload: ${JSON.stringify(data)}`);
@@ -307,6 +345,8 @@ module.exports = {
   generateAssetWithVolcengine,
   generateImageWithSeedream,
   generateVideoWithSeedance,
+  normalizeSeedanceDurationSec,
+  parseSupportedDurations,
   getArkGenerationTask,
   classifyPromptWithSeed,
   getSeedClassifierEndpointId,

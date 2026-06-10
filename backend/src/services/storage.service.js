@@ -15,6 +15,14 @@ const {
   TEMPLATES_FILE,
   REFERENCE_VIDEOS_FILE,
   EDITING_PLANS_FILE,
+  INSPIRATION_VIDEOS_DIR,
+  VIDEO_ANALYSIS_REPORTS_DIR,
+  INSPIRATION_TEMPLATES_DIR,
+  GENERATED_SCRIPTS_DIR,
+  CRAWLER_TASKS_DIR,
+  INSPIRATION_WORKFLOW_TASKS_DIR,
+  SCRIPT_WORKFLOW_TASKS_DIR,
+  CREATION_WORKFLOW_TASKS_DIR,
 } = require('../config/paths');
 const { ensureSafeId } = require('./id-validator.service');
 
@@ -38,6 +46,14 @@ async function writeJsonFile(filePath, payload) {
   const tempPath = `${filePath}.${Date.now()}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
   await fs.writeFile(tempPath, JSON.stringify(payload, null, 2));
   await fs.rename(tempPath, filePath);
+}
+
+async function deleteJsonFile(filePath) {
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 }
 
 async function readProject(id) {
@@ -87,6 +103,10 @@ async function readStoryboard(id) {
 
 async function writeStoryboard(id, payload) {
   await writeJsonFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`), payload);
+}
+
+async function deleteStoryboard(id) {
+  await deleteJsonFile(path.join(STORYBOARDS_DIR, `${ensureSafeId(id)}.json`));
 }
 
 async function readTask(id) {
@@ -143,6 +163,78 @@ async function writeEditingPlans(plans) {
   await writeJsonFile(EDITING_PLANS_FILE, plans);
 }
 
+async function listProjectScoped(dir, projectId) {
+  return readJsonFile(path.join(dir, `${ensureSafeId(projectId)}.json`), []);
+}
+
+async function writeProjectScoped(dir, projectId, payload) {
+  await writeJsonFile(path.join(dir, `${ensureSafeId(projectId)}.json`), payload);
+}
+
+async function listInspirationVideos(projectId) {
+  return listProjectScoped(INSPIRATION_VIDEOS_DIR, projectId);
+}
+
+async function writeInspirationVideos(projectId, videos) {
+  await writeProjectScoped(INSPIRATION_VIDEOS_DIR, projectId, videos);
+}
+
+async function listVideoAnalysisReports(projectId) {
+  return listProjectScoped(VIDEO_ANALYSIS_REPORTS_DIR, projectId);
+}
+
+async function writeVideoAnalysisReports(projectId, reports) {
+  await writeProjectScoped(VIDEO_ANALYSIS_REPORTS_DIR, projectId, reports);
+}
+
+async function listInspirationTemplates(projectId) {
+  return listProjectScoped(INSPIRATION_TEMPLATES_DIR, projectId);
+}
+
+async function writeInspirationTemplates(projectId, templates) {
+  await writeProjectScoped(INSPIRATION_TEMPLATES_DIR, projectId, templates);
+}
+
+async function listGeneratedScripts(projectId) {
+  return listProjectScoped(GENERATED_SCRIPTS_DIR, projectId);
+}
+
+async function writeGeneratedScripts(projectId, scripts) {
+  await writeProjectScoped(GENERATED_SCRIPTS_DIR, projectId, scripts);
+}
+
+async function listCrawlerTasks(projectId) {
+  return listProjectScoped(CRAWLER_TASKS_DIR, projectId);
+}
+
+async function writeCrawlerTasks(projectId, tasks) {
+  await writeProjectScoped(CRAWLER_TASKS_DIR, projectId, tasks);
+}
+
+async function listInspirationWorkflowTasks(projectId) {
+  return listProjectScoped(INSPIRATION_WORKFLOW_TASKS_DIR, projectId);
+}
+
+async function writeInspirationWorkflowTasks(projectId, tasks) {
+  await writeProjectScoped(INSPIRATION_WORKFLOW_TASKS_DIR, projectId, tasks);
+}
+
+async function listScriptWorkflowTasks(projectId) {
+  return listProjectScoped(SCRIPT_WORKFLOW_TASKS_DIR, projectId);
+}
+
+async function writeScriptWorkflowTasks(projectId, tasks) {
+  await writeProjectScoped(SCRIPT_WORKFLOW_TASKS_DIR, projectId, tasks);
+}
+
+async function listCreationWorkflowTasks(projectId) {
+  return listProjectScoped(CREATION_WORKFLOW_TASKS_DIR, projectId);
+}
+
+async function writeCreationWorkflowTasks(projectId, tasks) {
+  await writeProjectScoped(CREATION_WORKFLOW_TASKS_DIR, projectId, tasks);
+}
+
 async function listAssetGenerationTasks() {
   return readJsonFile(ASSET_GENERATION_TASKS_FILE, []);
 }
@@ -179,6 +271,7 @@ module.exports = {
   writeScript,
   readStoryboard,
   writeStoryboard,
+  deleteStoryboard,
   readTask,
   writeTask,
   listTasks,
@@ -192,6 +285,22 @@ module.exports = {
   writeReferenceVideos,
   listEditingPlans,
   writeEditingPlans,
+  listInspirationVideos,
+  writeInspirationVideos,
+  listVideoAnalysisReports,
+  writeVideoAnalysisReports,
+  listInspirationTemplates,
+  writeInspirationTemplates,
+  listGeneratedScripts,
+  writeGeneratedScripts,
+  listCrawlerTasks,
+  writeCrawlerTasks,
+  listInspirationWorkflowTasks,
+  writeInspirationWorkflowTasks,
+  listScriptWorkflowTasks,
+  writeScriptWorkflowTasks,
+  listCreationWorkflowTasks,
+  writeCreationWorkflowTasks,
   listAssetGenerationTasks,
   writeAssetGenerationTasks,
   listComplianceReviews,

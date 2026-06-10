@@ -1,3 +1,5 @@
+import MediaVideo from '../MediaVideo';
+
 function isVideo(asset) {
   return asset?.mediaType === 'video' || (asset?.mimeType || '').startsWith('video/') || String(asset?.type || '').includes('video');
 }
@@ -10,7 +12,7 @@ export default function AssetPreview({ asset, previewUrl, onOpen }) {
   const aspectRatio = width > 0 && height > 0 ? `${width} / ${height}` : undefined;
   return (
     <div className="asset-preview" style={aspectRatio ? { '--asset-aspect-ratio': aspectRatio } : undefined} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') onOpen?.(); }}>
-      {isVideo(asset) && previewUrl ? <video controls src={previewUrl} /> : null}
+      {isVideo(asset) && previewUrl ? <MediaVideo className="asset-preview-video" src={previewUrl} label={asset.title || asset.name || asset.originalName || 'Asset video'} /> : null}
       {isImage(asset) && previewUrl ? <img src={previewUrl} alt={asset.title || asset.name || asset.originalName} /> : null}
       {isVideo(asset) ? <span className="media-kind">video</span> : null}
       {!previewUrl || (!isVideo(asset) && !isImage(asset)) ? <div className="asset-file">No preview</div> : null}

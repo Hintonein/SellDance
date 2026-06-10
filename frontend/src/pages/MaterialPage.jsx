@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import PageShell from '../components/PageShell';
 import AssetPreview from '../components/assets/AssetPreview';
 import AssetAnalyzeButton from '../components/assets/AssetAnalyzeButton';
@@ -7,8 +7,8 @@ import MetadataViewer from '../components/common/MetadataViewer';
 import StatusBadge from '../components/common/StatusBadge';
 import TagList from '../components/common/TagList';
 
-const uploadTypes = ['', 'image', 'video', 'reference', 'product_image', 'product_video', 'reference_image', 'reference_video', 'logo', 'other'];
-const canonicalTypes = ['', 'image', 'video', 'reference', 'ai_generated'];
+const uploadTypes = ['', 'image', 'video', 'audio', 'reference', 'product_image', 'product_video', 'reference_image', 'reference_video', 'logo', 'other'];
+const canonicalTypes = ['', 'image', 'video', 'audio', 'reference', 'ai_generated'];
 const sourceTypes = ['', 'upload', 'url', 'ai', 'reference', 'mock'];
 const videoAssetTypes = ['product_video', 'reference_video', 'other'];
 
@@ -34,6 +34,16 @@ function videoSummary(asset) {
   const duration = video.duration ? `${Number(video.duration).toFixed(1)}s` : '-';
   const resolution = video.width && video.height ? `${video.width}x${video.height}` : '-';
   return `${duration} · ${resolution} · ${video.codec || '-'}`;
+}
+function isVideoAsset(asset) {
+  return asset?.mediaType === 'video' || String(asset?.mimeType || '').startsWith('video/') || String(asset?.type || '').includes('video');
+}
+function assetPreviewUrl(asset) {
+  if (!asset) return '';
+  if (isVideoAsset(asset)) {
+    return asset.previewUrl || asset.browserPreviewUrl || asset.metadata?.video?.previewUrl || asset.fileUrl || asset.url || asset.thumbnailUrl || '';
+  }
+  return asset.thumbnailUrl || asset.fileUrl || asset.url || '';
 }
 
 function providerLabel(asset) {
@@ -80,8 +90,13 @@ export default function MaterialPage({
   generationTask,
   isGenerating,
   generationElapsedLabel,
+  section = 'project',
+  onNavigateSection,
+  assetRouteId,
+  onOpenAsset,
+  onBackToAssets,
 }) {
-  const [uploadForm, setUploadForm] = useState({ title: '', type: '', tags: '', description: '' });
+  const [uploadForm, setUploadForm] = useState({ title: '', type: '', tags: '', description: '', audioKind: 'background_music' });
   const [file, setFile] = useState(null);
   const [searchForm, setSearchForm] = useState({ keyword: '', type: '', tag: '', mediaType: '', analysisStatus: '' });
   const [selectedAsset, setSelectedAsset] = useState(null);
@@ -149,6 +164,34 @@ export default function MaterialPage({
     [generationTask?.resultAssetId, sortedMaterials]
   );
   const selectedAssetInProject = selectedAsset ? projectAssetIds.has(assetId(selectedAsset)) : false;
+  const activeSection = assetRouteId ? 'detail' : (section || 'project');
+  const uploadingAudio = file?.type?.startsWith('audio/') || uploadForm.type === 'audio';
+
+  const selectAsset = useCallback(async (asset) => {
+    setError('');
+    try {
+      const id = assetId(asset);
+      const isLinkedToProject = projectAssetIds.has(id);
+      const getDetail = isLinkedToProject ? onGetDetail : (onGetGlobalDetail || onGetDetail);
+      const getSlices = isLinkedToProject ? onGetSlices : (onGetGlobalSlices || onGetSlices);
+      const detail = getDetail ? await getDetail(id) : asset;
+      setSelectedAsset(detail);
+      setIsAssetDetailCollapsed(false);
+      if (getSlices) {
+        const result = await getSlices(id);
+        setSlices(result.items || []);
+      }
+    } catch (detailError) {
+      setError(detailError.message);
+    }
+  }, [onGetDetail, onGetGlobalDetail, onGetGlobalSlices, onGetSlices, projectAssetIds]);
+
+  useEffect(() => {
+    if (!assetRouteId) return;
+    if (selectedAsset && assetId(selectedAsset) === assetRouteId) return;
+    const target = [...sortedMaterials, ...sortedGlobalAssets].find((asset) => assetId(asset) === assetRouteId);
+    if (target) selectAsset(target);
+  }, [assetRouteId, selectAsset, selectedAsset, sortedGlobalAssets, sortedMaterials]);
 
   useEffect(() => {
     if (!selectedAsset) return;
@@ -167,25 +210,6 @@ export default function MaterialPage({
     setGenerationPanelCollapsed(false);
   }, [generationTask?.id]);
 
-  const selectAsset = async (asset) => {
-    setError('');
-    try {
-      const id = assetId(asset);
-      const isLinkedToProject = projectAssetIds.has(id);
-      const getDetail = isLinkedToProject ? onGetDetail : (onGetGlobalDetail || onGetDetail);
-      const getSlices = isLinkedToProject ? onGetSlices : (onGetGlobalSlices || onGetSlices);
-      const detail = getDetail ? await getDetail(id) : asset;
-      setSelectedAsset(detail);
-      setIsAssetDetailCollapsed(false);
-      if (getSlices) {
-        const result = await getSlices(id);
-        setSlices(result.items || []);
-      }
-    } catch (detailError) {
-      setError(detailError.message);
-    }
-  };
-
   const submit = async (event) => {
     event.preventDefault();
     if (!file) return;
@@ -199,9 +223,12 @@ export default function MaterialPage({
         tags: uploadForm.tags,
         description: uploadForm.description,
         source: 'upload',
+        audioKind: uploadingAudio ? uploadForm.audioKind : undefined,
+        backgroundMusicMixMode: uploadingAudio && uploadForm.audioKind === 'full_audio_voiceover' ? 'replace_source' : uploadingAudio ? 'mix_under_source' : undefined,
+        backgroundMusicVolume: uploadingAudio && uploadForm.audioKind === 'full_audio_voiceover' ? 1 : uploadingAudio ? 0.16 : undefined,
       });
       setFile(null);
-      setUploadForm({ title: '', type: '', tags: '', description: '' });
+      setUploadForm({ title: '', type: '', tags: '', description: '', audioKind: 'background_music' });
       event.target.reset();
       await onRefresh();
     } catch (uploadError) {
@@ -334,6 +361,7 @@ export default function MaterialPage({
   const closeAssetDetail = () => {
     setSelectedAsset(null);
     setSlices([]);
+    if (assetRouteId && onBackToAssets) onBackToAssets();
   };
 
   const deleteGlobalAsset = async (asset) => {
@@ -372,11 +400,12 @@ export default function MaterialPage({
         {!isAssetDetailCollapsed ? (
           <>
             <div className="asset-detail-hero">
-              <AssetPreview asset={selectedAsset} previewUrl={resolveMediaUrl(selectedAsset.fileUrl || selectedAsset.url || selectedAsset.thumbnailUrl)} />
+              <AssetPreview asset={selectedAsset} previewUrl={resolveMediaUrl(assetPreviewUrl(selectedAsset))} />
               <div className="asset-detail-main">
                 <dl className="detail-list">
                   <div><dt>ID</dt><dd>{selectedId}</dd></div>
                   <div><dt>File</dt><dd>{selectedAsset.fileUrl || selectedAsset.url || '-'}</dd></div>
+                  <div><dt>Preview</dt><dd>{selectedAsset.previewUrl || selectedAsset.browserPreviewUrl || selectedAsset.metadata?.video?.previewUrl || '-'}</dd></div>
                   <div><dt>Provider</dt><dd>{providerLabel(selectedAsset)}</dd></div>
                   <div><dt>Video</dt><dd>{videoSummary(selectedAsset) || '-'}</dd></div>
                 </dl>
@@ -441,7 +470,39 @@ export default function MaterialPage({
     <PageShell title="Assets" description="Upload, choose from the shared library, or generate AI video assets for the current project.">
       {error ? <div className="message error-message">{error}</div> : null}
 
-      <section className="card section-card">
+      <div className="section-tabs">
+        {[
+          ['project', 'Project Assets'],
+          ['upload', 'Upload Asset'],
+          ['search', 'Search Assets'],
+          ['generate', 'AI Generated Asset'],
+          ['library', 'Global Asset Library'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={activeSection === key ? 'active' : ''}
+            onClick={() => onNavigateSection?.(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeSection === 'detail' ? (
+        <section className="card section-card">
+          <div className="detail-page-header">
+            <button type="button" className="back-button" onClick={onBackToAssets}>Back to Project Assets</button>
+            <div>
+              <h3>Asset detail</h3>
+              <p>{selectedAsset ? assetDisplayName(selectedAsset) : assetRouteId}</p>
+            </div>
+          </div>
+          {selectedAsset ? renderSelectedAssetDetailPanel() : <EmptyState>Loading asset detail...</EmptyState>}
+        </section>
+      ) : null}
+
+      {activeSection === 'project' ? <section className="card section-card">
         <div className="section-heading">
           <div>
             <h3>Current project assets</h3>
@@ -452,7 +513,7 @@ export default function MaterialPage({
         <div className="asset-library">
           {sortedMaterials.map((asset) => {
             const id = assetId(asset);
-            const previewUrl = resolveMediaUrl(asset.fileUrl || asset.url || asset.thumbnailUrl);
+            const previewUrl = resolveMediaUrl(assetPreviewUrl(asset));
             const isCurrentAssetAnalyzing = analyzingAssetId === id;
             const isAnotherAssetAnalyzing = Boolean(analyzingAssetId && analyzingAssetId !== id);
             return (
@@ -476,7 +537,7 @@ export default function MaterialPage({
                         {asset.metadata?.video ? <p className="meta-line">video: {videoSummary(asset)}</p> : null}
                       </div>
                       <div className="button-row">
-                        <button type="button" onClick={() => selectAsset(asset)} disabled={disabled}>Detail</button>
+                        <button type="button" onClick={() => { onOpenAsset?.(id); selectAsset(asset); }} disabled={disabled}>Detail</button>
                         <AssetAnalyzeButton disabled={disabled || isAnotherAssetAnalyzing} isAnalyzing={isCurrentAssetAnalyzing} onAnalyze={() => analyzeSelectedAsset(asset)} label="Reanalyze" />
                         <button type="button" onClick={() => deleteAsset(asset)} disabled={disabled}>Delete</button>
                       </div>
@@ -493,9 +554,9 @@ export default function MaterialPage({
           {sortedMaterials.length === 0 ? <EmptyState>No project assets yet. Upload, choose from the shared library, or generate AI material to start.</EmptyState> : null}
         </div>
         {selectedAsset && !selectedAssetInProject ? renderSelectedAssetDetailPanel() : null}
-      </section>
+      </section> : null}
 
-      <form className="card form section-card" onSubmit={submit}>
+      {activeSection === 'upload' ? <form className="card form section-card" onSubmit={submit}>
         <div className="section-heading">
           <div>
             <h3>Upload asset</h3>
@@ -522,12 +583,21 @@ export default function MaterialPage({
         </label>
         <label>
           File
-          <input type="file" accept="image/*,video/*" onChange={(event) => setFile(event.target.files?.[0] || null)} disabled={disabled || isUploading} required />
+          <input type="file" accept="image/*,video/*,audio/*" onChange={(event) => setFile(event.target.files?.[0] || null)} disabled={disabled || isUploading} required />
         </label>
+        {uploadingAudio ? (
+          <label>
+            Audio type
+            <select value={uploadForm.audioKind} onChange={(event) => setUploadForm((prev) => ({ ...prev, audioKind: event.target.value }))} disabled={disabled || isUploading}>
+              <option value="background_music">Background music only - mix quietly under generated dialogue</option>
+              <option value="full_audio_voiceover">Full audio / voiceover track - replace generated dialogue</option>
+            </select>
+          </label>
+        ) : null}
         <button type="submit" disabled={disabled || isUploading}>{isUploading ? 'Uploading...' : 'Upload asset'}</button>
-      </form>
+      </form> : null}
 
-      <section className="card form section-card">
+      {activeSection === 'search' ? <section className="card form section-card">
         <div className="section-heading">
           <div>
             <h3>Search assets</h3>
@@ -588,7 +658,7 @@ export default function MaterialPage({
                   </div>
                   <div className="search-result-actions">
                     <StatusBadge status={isLinked ? 'ready' : 'pending'}>{isLinked ? 'In project' : 'Library only'}</StatusBadge>
-                    <button type="button" onClick={() => selectAsset(asset)} disabled={disabled}>Detail</button>
+                    <button type="button" onClick={() => { onOpenAsset?.(id); selectAsset(asset); }} disabled={disabled}>Detail</button>
                     {isLinked ? null : (
                       <button type="button" onClick={() => addSearchResultToProject(asset)} disabled={disabled || !onLinkAsset}>
                         Add to project
@@ -600,9 +670,9 @@ export default function MaterialPage({
             })}
           </div>
         ) : null}
-      </section>
+      </section> : null}
 
-      <section className="card form section-card">
+      {activeSection === 'generate' ? <section className="card form section-card">
         <div className="section-heading">
           <div>
             <h3>AI generated video asset</h3>
@@ -685,7 +755,7 @@ export default function MaterialPage({
                 {generatedAsset ? (
                   <small>
                     Generated asset: {generatedAsset.title || generatedAsset.name || generatedAsset.originalName}
-                    <button type="button" onClick={() => selectAsset(generatedAsset)}>Open detail</button>
+                    <button type="button" onClick={() => { onOpenAsset?.(assetId(generatedAsset)); selectAsset(generatedAsset); }}>Open detail</button>
                   </small>
                 ) : null}
                 {generationTask.error ? <small>{generationTask.error}</small> : null}
@@ -693,9 +763,9 @@ export default function MaterialPage({
             ) : null}
           </div>
         ) : null}
-      </section>
+      </section> : null}
 
-      <section className="card section-card">
+      {activeSection === 'library' ? <section className="card section-card">
         <div className="section-heading">
           <div>
             <h3>Global asset library</h3>
@@ -738,7 +808,7 @@ export default function MaterialPage({
             </table>
           </div>
         ) : null}
-      </section>
+      </section> : null}
     </PageShell>
   );
 }

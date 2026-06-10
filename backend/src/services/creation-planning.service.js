@@ -4,6 +4,7 @@ const { searchSlices } = require('./asset-slice.service');
 const { getStoryboard } = require('./storyboard.service');
 const { matchAssetsForScene } = require('./scene-asset-matching.service');
 const { listEditingPlans, writeEditingPlans } = require('./storage.service');
+const { buildSmartEditingPlan } = require('./creation-agent.service');
 
 function now() {
   return new Date().toISOString();
@@ -76,6 +77,30 @@ function buildClip({ asset, slice, order, duration, subtitle, voiceover, sceneId
     voiceover: voiceover || '',
     sceneId: sceneId || null,
     role: role || 'asset_first',
+  };
+}
+
+function buildGeneratedSceneClip({ scene, order }) {
+  const duration = Math.max(1, Number(scene.duration || scene.durationSeconds || 3));
+  return {
+    id: `clip_${uuidv4()}`,
+    order,
+    assetId: null,
+    sliceId: null,
+    sourceUrl: scene.generatedVideoUrl,
+    mediaType: 'video',
+    startTime: 0,
+    endTime: duration,
+    duration,
+    fitMode: 'cover',
+    crop: null,
+    transitionIn: order === 1 ? 'cut' : 'quick_cut',
+    transitionOut: 'cut',
+    subtitle: scene.subtitle || scene.subtitleText || '',
+    voiceover: scene.voiceover || scene.narration || scene.scriptText || '',
+    sceneId: scene.id || scene.sceneId || null,
+    role: scene.sceneRole || 'storyboard_generated_scene',
+    sourceType: 'storyboard_generated_output',
   };
 }
 
@@ -178,6 +203,9 @@ async function createAssetFirstPlan(projectId, payload = {}) {
       maxDuration: 15,
       style: payload.style || 'clean_ecommerce',
       language: payload.language || 'zh-CN',
+      audioMode: payload.audioMode === 'uploaded_bgm' || payload.audioMode === 'silent' ? payload.audioMode : 'preserve_source',
+      backgroundMusicMixMode: payload.backgroundMusicMixMode === 'replace_source' ? 'replace_source' : payload.backgroundMusicMixMode === 'mix_under_source' ? 'mix_under_source' : null,
+      backgroundMusicVolume: Number.isFinite(Number(payload.backgroundMusicVolume)) ? Number(payload.backgroundMusicVolume) : null,
     },
     usedAssetIds,
     usedAssetSliceIds,
@@ -204,6 +232,10 @@ async function createStoryboardDrivenPlan(projectId, payload = {}) {
   const targetDuration = clampTotalDuration(payload.targetDuration || scenes.reduce((sum, scene) => sum + Number(scene.duration || scene.durationSeconds || 3), 0));
   const clips = [];
   for (const scene of scenes) {
+    if (scene.generatedVideoUrl) {
+      clips.push(buildGeneratedSceneClip({ scene, order: clips.length + 1 }));
+      continue;
+    }
     let assetIds = normalizeIdList(scene.selectedAssetIds);
     let sliceIds = normalizeIdList(scene.selectedAssetSliceIds);
     if (!assetIds.length && scene.assetRequirements) {
@@ -249,6 +281,9 @@ async function createStoryboardDrivenPlan(projectId, payload = {}) {
       maxDuration: 15,
       style: payload.style || 'storyboard_ecommerce',
       language: payload.language || 'zh-CN',
+      audioMode: payload.audioMode === 'uploaded_bgm' || payload.audioMode === 'silent' ? payload.audioMode : 'preserve_source',
+      backgroundMusicMixMode: payload.backgroundMusicMixMode === 'replace_source' ? 'replace_source' : payload.backgroundMusicMixMode === 'mix_under_source' ? 'mix_under_source' : null,
+      backgroundMusicVolume: Number.isFinite(Number(payload.backgroundMusicVolume)) ? Number(payload.backgroundMusicVolume) : null,
     },
     usedAssetIds,
     usedAssetSliceIds,
@@ -261,14 +296,21 @@ async function createStoryboardDrivenPlan(projectId, payload = {}) {
 }
 
 async function createEditingPlan(projectId, payload = {}) {
+  if (payload.mode === 'smart_editing') return createSmartEditingPlan(projectId, payload);
   return payload.mode === 'storyboard_driven'
     ? createStoryboardDrivenPlan(projectId, payload)
     : createAssetFirstPlan(projectId, payload);
 }
 
+async function createSmartEditingPlan(projectId, payload = {}) {
+  const plan = await buildSmartEditingPlan(projectId, payload);
+  return savePlan(plan);
+}
+
 module.exports = {
   createAssetFirstPlan,
   createStoryboardDrivenPlan,
+  createSmartEditingPlan,
   createEditingPlan,
   getEditingPlan,
 };

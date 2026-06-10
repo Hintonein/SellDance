@@ -22,6 +22,65 @@ function videoToolError(tool, error) {
   return wrapped;
 }
 
+function safePreviewName(assetId) {
+  const safeId = String(assetId || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
+  return 'browser-preview-' + safeId + '.mp4';
+}
+
+function isBrowserPlayableVideo({ mimeType = '', fileUrl = '', metadata = {} } = {}) {
+  const lowerMime = String(mimeType || '').toLowerCase();
+  const lowerUrl = String(fileUrl || '').toLowerCase();
+  const codec = String(metadata.codec || '').toLowerCase();
+  const looksLikeMp4 = lowerMime === 'video/mp4' || lowerUrl.endsWith('.mp4');
+  return looksLikeMp4 && ['h264', 'avc1'].includes(codec);
+}
+
+async function createBrowserVideoPreview({ filePath, assetId, mimeType = '', fileUrl = '', metadata = {} }) {
+  if (isBrowserPlayableVideo({ mimeType, fileUrl, metadata })) {
+    return {
+      previewUrl: fileUrl,
+      previewStatus: 'source_browser_playable',
+      previewMimeType: mimeType || 'video/mp4',
+    };
+  }
+  const filename = safePreviewName(assetId);
+  const outputPath = path.join(UPLOADS_DIR, filename);
+  await fs.mkdir(UPLOADS_DIR, { recursive: true });
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', filePath,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-dn',
+      '-sn',
+      '-vf', 'scale=-2:720,format=yuv420p',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-threads', '2',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-shortest',
+      outputPath,
+    ], { maxBuffer: 1024 * 1024 * 8 });
+    return {
+      previewUrl: '/uploads/' + filename,
+      previewStatus: 'generated',
+      previewMimeType: 'video/mp4',
+    };
+  } catch (error) {
+    try { await fs.unlink(outputPath); } catch { /* no-op */ }
+    return {
+      previewUrl: '',
+      previewStatus: 'failed',
+      previewError: error.message,
+      previewMimeType: 'video/mp4',
+    };
+  }
+}
+
 async function probeVideoMetadata(filePath) {
   try {
     const { stdout } = await execFileAsync('ffprobe', [
@@ -118,6 +177,8 @@ async function createVideoSlicesFromAsset(asset, filePath, options = {}) {
 
 module.exports = {
   probeVideoMetadata,
+  createBrowserVideoPreview,
+  isBrowserPlayableVideo,
   generateSliceThumbnail,
   buildFixedWindowRanges,
   createVideoSlicesFromAsset,

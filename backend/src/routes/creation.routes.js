@@ -1,6 +1,9 @@
 const router = require('express').Router({ mergeParams: true });
 const svc = require('../services/creation.service');
+const workflow = require('../services/creation-workflow-task.service');
 router.post('/plan', async (req, res) => res.status(201).json(await svc.createEditingPlan(req.params.projectId, req.body || {})));
+router.post('/smart-edit', async (req, res) => res.status(202).json(await workflow.createTask(req.params.projectId, { ...(req.body || {}), type: 'smart_editing' })));
+router.post('/one-click', async (req, res) => res.status(202).json(await workflow.createTask(req.params.projectId, { ...(req.body || {}), type: 'one_click_video' })));
 router.post('/render', async (req, res) => res.status(201).json(await svc.createRenderTask(req.params.projectId, req.body || {})));
 router.get('/tasks', async (req, res) => res.json(await svc.listCreationTasks(req.params.projectId)));
 router.get('/tasks/:taskId', async (req, res) => { const task = await svc.getCreationTask(req.params.projectId, req.params.taskId); if (!task) return res.status(404).json({ message: 'Creation task not found.' }); res.json(task); });

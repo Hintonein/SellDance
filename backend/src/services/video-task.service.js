@@ -35,13 +35,33 @@ async function persistTask(task) {
   return task;
 }
 
-async function updateTaskState(task, { status, progress, errorMessage, exportFile, videoUrl }) {
+async function updateTaskState(task, {
+  status,
+  progress,
+  errorMessage,
+  exportFile,
+  videoUrl,
+  captionUrl,
+  audioMode,
+  hasAudioTrack,
+  backgroundMusicMixMode,
+  backgroundMusicVolume,
+  sourceAudioPreserved,
+  audioMixSummary,
+}) {
   if (status) task.status = status;
   if (status) task.currentStep = stepByStatus[status] || task.currentStep;
   if (typeof progress === 'number') task.progress = Math.max(0, Math.min(100, Math.round(progress)));
   if (errorMessage !== undefined) task.errorMessage = errorMessage;
   if (exportFile !== undefined) task.exportFile = exportFile;
   if (videoUrl !== undefined) task.videoUrl = videoUrl;
+  if (captionUrl !== undefined) task.captionUrl = captionUrl;
+  if (audioMode !== undefined) task.audioMode = audioMode;
+  if (hasAudioTrack !== undefined) task.hasAudioTrack = hasAudioTrack;
+  if (backgroundMusicMixMode !== undefined) task.backgroundMusicMixMode = backgroundMusicMixMode;
+  if (backgroundMusicVolume !== undefined) task.backgroundMusicVolume = backgroundMusicVolume;
+  if (sourceAudioPreserved !== undefined) task.sourceAudioPreserved = sourceAudioPreserved;
+  if (audioMixSummary !== undefined) task.audioMixSummary = audioMixSummary;
   return persistTask(task);
 }
 
@@ -50,9 +70,10 @@ async function isCanceled(taskId) {
   return latest?.status === 'canceled';
 }
 
-async function assetsForEditingPlan(projectId, plan) {
+async function assetsForEditingPlan(projectId, plan, options = {}) {
   const assets = [];
-  for (const assetId of plan.usedAssetIds || []) {
+  const assetIds = [...new Set([...(plan.usedAssetIds || []), options.backgroundMusicAssetId].filter(Boolean))];
+  for (const assetId of assetIds) {
     const asset = await getAsset(projectId, assetId);
     if (asset) assets.push(asset);
   }
@@ -78,8 +99,11 @@ async function runTask(task) {
     if (task.options?.editingPlan || task.options?.editingPlanId) {
       const plan = task.options.editingPlan || await getEditingPlan(task.projectId, task.options.editingPlanId);
       if (!plan) throw new Error('EditingPlan not found for render task.');
-      scenes = clipsToRenderScenes(plan.clips || []);
-      materials = await assetsForEditingPlan(task.projectId, plan);
+      scenes = clipsToRenderScenes(plan.clips || [], {
+        renderSettings: plan.renderSettings || {},
+        subtitleMode: task.options.subtitleMode || plan.renderSettings?.subtitleMode,
+      });
+      materials = await assetsForEditingPlan(task.projectId, plan, task.options || {});
       renderMetadata = {
         editingPlanId: plan.id,
         usedAssetIds: plan.usedAssetIds || [],
@@ -89,6 +113,15 @@ async function runTask(task) {
         renderSettings: plan.renderSettings || {},
         aspectRatio: plan.aspectRatio || '9:16',
         duration: plan.metadata?.duration || plan.targetDuration || null,
+      };
+      task.options = {
+        ...task.options,
+        renderSettings: plan.renderSettings || {},
+        subtitleMode: task.options.subtitleMode || plan.renderSettings?.subtitleMode || 'off',
+        audioMode: task.options.audioMode || plan.renderSettings?.audioMode || (task.options.backgroundMusicMixMode === 'replace_source' ? 'uploaded_bgm' : 'preserve_source'),
+        backgroundMusicMixMode: task.options.backgroundMusicMixMode || plan.renderSettings?.backgroundMusicMixMode || null,
+        backgroundMusicVolume: task.options.backgroundMusicVolume || plan.renderSettings?.backgroundMusicVolume || null,
+        captionDrafts: plan.captionDrafts || plan.subtitles || [],
       };
     } else {
       const storyboard = await getStoryboard(task.projectId);
@@ -131,6 +164,13 @@ async function runTask(task) {
       errorMessage: null,
       exportFile: rendered.exportFile,
       videoUrl: rendered.videoUrl,
+      captionUrl: rendered.captionUrl || null,
+      audioMode: rendered.audioMode,
+      hasAudioTrack: rendered.hasAudioTrack,
+      backgroundMusicMixMode: rendered.backgroundMusicMixMode,
+      backgroundMusicVolume: rendered.backgroundMusicVolume,
+      sourceAudioPreserved: rendered.sourceAudioPreserved,
+      audioMixSummary: rendered.audioMixSummary,
     });
   } catch (error) {
     if (await isCanceled(task.id)) return;

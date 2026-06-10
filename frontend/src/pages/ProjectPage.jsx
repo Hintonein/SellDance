@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import PageShell from '../components/PageShell';
 
+const DEFAULT_EXPECTED_DURATION_SECONDS = 15;
+const MAX_EXPECTED_DURATION_SECONDS = 300;
+
 export default function ProjectPage({ projects, selectedProjectId, onSelect, onCreate, onArchive }) {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -12,7 +15,7 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
     targetAudience: '',
     style: 'fast TikTok product demo',
     targetPlatform: 'TikTok Shop',
-    expectedDuration: 15,
+    expectedDuration: DEFAULT_EXPECTED_DURATION_SECONDS,
     description: '',
   });
 
@@ -35,7 +38,7 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
       targetAudience: '',
       style: 'fast TikTok product demo',
       targetPlatform: 'TikTok Shop',
-      expectedDuration: 15,
+      expectedDuration: DEFAULT_EXPECTED_DURATION_SECONDS,
       description: '',
     });
     setShowCreate(false);
@@ -138,7 +141,7 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
           <input
             type="number"
             min="6"
-            max="15"
+            max={MAX_EXPECTED_DURATION_SECONDS}
             value={form.expectedDuration}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, expectedDuration: Number(event.target.value) }))

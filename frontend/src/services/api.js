@@ -5,6 +5,8 @@ import { scriptsApi } from '../api/scripts.api';
 import { storyboardsApi } from '../api/storyboards.api';
 import { creationApi } from '../api/creation.api';
 import { generationTasksApi } from '../api/generationTasks.api';
+import { inspirationApi } from '../api/inspiration.api';
+import { scriptWorkflowTasksApi } from '../api/scriptWorkflowTasks.api';
 import { request } from '../api/http';
 
 export { assetsApi, materialsApi, creationApi, generationTasksApi };
@@ -39,20 +41,45 @@ export const api = {
   generateScript: scriptsApi.generate,
   saveScript: scriptsApi.save,
   refineScript: scriptsApi.refine,
+  deleteScriptVersion: scriptsApi.deleteVersion,
   regenerateScript: scriptsApi.regenerate,
   regenerateScriptScene: scriptsApi.regenerateScene,
   getStoryboard: storyboardsApi.getCurrent,
   generateStoryboard: storyboardsApi.generate,
   saveStoryboard: storyboardsApi.save,
   updateStoryboardScene: storyboardsApi.updateScene,
+  reorderStoryboardScenes: storyboardsApi.reorderScenes,
+  deleteStoryboardScene: storyboardsApi.deleteScene,
   regenerateStoryboardScene: storyboardsApi.regenerateScene,
+  deleteStoryboard: storyboardsApi.remove,
+  createScriptWorkflowTask: scriptWorkflowTasksApi.create,
+  listScriptWorkflowTasks: scriptWorkflowTasksApi.list,
+  getScriptWorkflowTask: scriptWorkflowTasksApi.get,
   createEditingPlan: creationApi.createPlan,
+  createSmartEditingPlan: creationApi.smartEdit,
+  createOneClickVideo: creationApi.oneClick,
   renderCreation: creationApi.render,
   listCreationTasks: creationApi.listTasks,
   getCreationTask: creationApi.getTask,
   retryCreationTask: creationApi.retryTask,
   cancelCreationTask: creationApi.cancelTask,
+  listCreationWorkflowTasks: creationApi.listWorkflowTasks,
+  getCreationWorkflowTask: creationApi.getWorkflowTask,
   listTasks: generationTasksApi.list,
   createTask: generationTasksApi.create,
   retryTask: generationTasksApi.retry,
+  searchInspirationVideos: inspirationApi.searchVideos,
+  listInspirationVideos: inspirationApi.listVideos,
+  clearInspirationVideos: inspirationApi.clearVideos,
+  getInspirationVideo: inspirationApi.getVideo,
+  analyzeInspirationVideo: inspirationApi.analyzeVideo,
+  listInspirationTemplates: inspirationApi.listTemplates,
+  generateInspirationTemplate: inspirationApi.generateTemplate,
+  deleteInspirationTemplate: inspirationApi.deleteTemplate,
+  analyzeAndTemplateInspirationVideos: inspirationApi.analyzeAndTemplate,
+  listInspirationWorkflowTasks: inspirationApi.listWorkflowTasks,
+  getInspirationWorkflowTask: inspirationApi.getWorkflowTask,
+  listCrawlerTasks: inspirationApi.listCrawlerTasks,
+  getCrawlerTask: inspirationApi.getCrawlerTask,
+  cancelCrawlerTask: inspirationApi.cancelCrawlerTask,
 };

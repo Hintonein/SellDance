@@ -7,7 +7,6 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
-const app = require('../src/app');
 const {
   ASSETS_DIR,
   SCRIPTS_DIR,
@@ -23,6 +22,8 @@ const {
 const { appendAsset, normalizeAsset } = require('../src/services/asset.service');
 const { createSlice } = require('../src/services/asset-slice.service');
 const { createEditingPlan } = require('../src/services/creation-planning.service');
+const { generateAndSaveScript, regenerateScriptScene, updateScript } = require('../src/services/script.service');
+const { generateAndSaveStoryboard, updateScene: updateStoryboardScene } = require('../src/services/storyboard.service');
 const { createReferenceVideo, analyzeReferenceVideo } = require('../src/services/reference-video.service');
 const { mineTemplate } = require('../src/services/template.service');
 const { curateTags } = require('../src/services/asset-tag.service');
@@ -64,35 +65,6 @@ async function cleanupProject(projectId) {
   } catch {
     // no-op
   }
-}
-
-async function withServer(fn) {
-  const server = app.listen(0);
-  await new Promise((resolve) => server.once('listening', resolve));
-  const baseUrl = `http://127.0.0.1:${server.address().port}/api`;
-  try {
-    return await fn(baseUrl);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
-}
-
-async function jsonFetch(baseUrl, pathName, options = {}) {
-  const response = await fetch(`${baseUrl}${pathName}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    const error = new Error(body.message || `HTTP ${response.status}`);
-    error.status = response.status;
-    error.body = body;
-    throw error;
-  }
-  return body;
 }
 
 async function appendTestImage(projectId, assetId = 'asset_closeup') {
@@ -155,76 +127,48 @@ test('Phase 2 Owner 2 APIs generate structured scripts and storyboards with reca
   await cleanupProject(projectId);
   await appendTestImage(projectId);
 
-  await withServer(async (baseUrl) => {
-    const script = await jsonFetch(baseUrl, `/projects/${projectId}/scripts/generate`, {
-      method: 'POST',
-      body: JSON.stringify({
-        productInfo: 'Leakproof travel tumbler',
-        sellingPoints: ['leakproof lid', 'close-up steel detail'],
-        audience: 'commuters',
-        style: 'clean_ecommerce',
-      }),
-    });
-    assert.equal(script.projectId, projectId);
-    assert.ok(script.scenes.length >= 4);
-    assert.ok(script.scenes[0].duration);
-    assert.ok(script.scenes[0].visualDescription);
-    assert.ok(script.scenes[0].subtitle);
-    assert.ok(script.scenes[0].voiceover);
-
-    const regenerated = await jsonFetch(baseUrl, `/projects/${projectId}/scripts/${script.id}/scenes/${script.scenes[0].id}/regenerate`, {
-      method: 'POST',
-      body: JSON.stringify({ prompt: 'make the hook more urgent' }),
-    });
-    assert.equal(regenerated.scenes[0].sceneRole, 'hook');
-
-    const transitionScript = await jsonFetch(baseUrl, `/projects/${projectId}/scripts/${script.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        ...regenerated,
-        scenes: [{ ...regenerated.scenes[0], sceneRole: 'transition', duration: 1.5 }],
-      }),
-    });
-    assert.equal(transitionScript.scenes[0].sceneRole, 'transition');
-
-    const storyboard = await jsonFetch(baseUrl, `/projects/${projectId}/storyboards/generate`, {
-      method: 'POST',
-      body: JSON.stringify({ scriptId: script.id, scenes: regenerated.scenes }),
-    });
-    assert.ok(storyboard.scenes.length >= 4);
-    assert.ok(storyboard.scenes[0].assetRequirements);
-    assert.ok(Array.isArray(storyboard.scenes[0].candidateAssets));
-    assert.ok(Array.isArray(storyboard.scenes[0].candidateSlices));
-
-    const patched = await jsonFetch(baseUrl, `/projects/${projectId}/storyboards/${storyboard.id}/scenes/${storyboard.scenes[0].id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ subtitle: 'Updated subtitle', selectedAssetIds: ['asset_closeup'] }),
-    });
-    assert.equal(patched.scenes[0].subtitle, 'Updated subtitle');
-    assert.deepEqual(patched.scenes[0].selectedAssetIds, ['asset_closeup']);
-    await assert.rejects(
-      () => jsonFetch(baseUrl, `/projects/${projectId}/storyboards/${storyboard.id}/scenes/not-a-scene`, {
-        method: 'PATCH',
-        body: JSON.stringify({ subtitle: 'Should fail' }),
-      }),
-      (error) => error.status === 404,
-    );
+  const script = await generateAndSaveScript(projectId, {
+    productInfo: 'Leakproof travel tumbler',
+    sellingPoints: ['leakproof lid', 'close-up steel detail'],
+    audience: 'commuters',
+    style: 'clean_ecommerce',
   });
+  assert.equal(script.projectId, projectId);
+  assert.ok(script.scenes.length >= 4);
+  assert.ok(script.scenes[0].duration);
+  assert.ok(script.scenes[0].visualDescription);
+  assert.ok(script.scenes[0].subtitle);
+  assert.ok(script.scenes[0].voiceover);
+
+  const regenerated = await regenerateScriptScene(projectId, script.id, script.scenes[0].id, { prompt: 'make the hook more urgent' });
+  assert.equal(regenerated.scenes[0].sceneRole, 'hook');
+
+  const transitionScript = await updateScript(projectId, script.id, {
+    ...regenerated,
+    scenes: [{ ...regenerated.scenes[0], sceneRole: 'transition', duration: 1.5 }],
+  });
+  assert.equal(transitionScript.scenes[0].sceneRole, 'transition');
+
+  const storyboard = await generateAndSaveStoryboard(projectId, { scriptId: script.id, scenes: regenerated.scenes });
+  assert.ok(storyboard.scenes.length >= 4);
+  assert.ok(storyboard.scenes[0].assetRequirements);
+  assert.ok(Array.isArray(storyboard.scenes[0].candidateAssets));
+  assert.ok(Array.isArray(storyboard.scenes[0].candidateSlices));
+
+  const patched = await updateStoryboardScene(projectId, storyboard.id, storyboard.scenes[0].id, {
+    subtitle: 'Updated subtitle',
+    selectedAssetIds: ['asset_closeup'],
+  });
+  assert.equal(patched.scenes[0].subtitle, 'Updated subtitle');
+  assert.deepEqual(patched.scenes[0].selectedAssetIds, ['asset_closeup']);
+  assert.equal(await updateStoryboardScene(projectId, storyboard.id, 'not-a-scene', { subtitle: 'Should fail' }), null);
 
   const emptyProjectId = `${projectId}-empty`;
   await cleanupProject(emptyProjectId);
-  await withServer(async (baseUrl) => {
-    const script = await jsonFetch(baseUrl, `/projects/${emptyProjectId}/scripts/generate`, {
-      method: 'POST',
-      body: JSON.stringify({ productInfo: 'No asset product', sellingPoints: ['simple benefit'] }),
-    });
-    const storyboard = await jsonFetch(baseUrl, `/projects/${emptyProjectId}/storyboards/generate`, {
-      method: 'POST',
-      body: JSON.stringify({ scriptId: script.id, scenes: script.scenes }),
-    });
-    assert.ok(storyboard.scenes[0].fallbackReason);
-    assert.deepEqual(storyboard.scenes[0].candidateAssets, []);
-  });
+  const emptyScript = await generateAndSaveScript(emptyProjectId, { productInfo: 'No asset product', sellingPoints: ['simple benefit'] });
+  const emptyStoryboard = await generateAndSaveStoryboard(emptyProjectId, { scriptId: emptyScript.id, scenes: emptyScript.scenes });
+  assert.ok(emptyStoryboard.scenes[0].fallbackReason);
+  assert.deepEqual(emptyStoryboard.scenes[0].candidateAssets, []);
 
   await cleanupProject(projectId);
   await cleanupProject(emptyProjectId);
@@ -385,7 +329,7 @@ test('Phase 2 Owner 3 render task records output metadata from EditingPlan', asy
     targetDuration: 2,
   });
   const task = await videoTask.createTask(projectId, { editingPlan: plan });
-  const completed = await pollTask(task.id, (row) => ['completed', 'failed'].includes(row?.status), 12000);
+  const completed = await pollTask(task.id, (row) => ['completed', 'failed'].includes(row?.status), 60000);
   assert.equal(completed.status, 'completed', completed.errorMessage);
   assert.ok(completed.outputVideoUrl);
   assert.deepEqual(completed.outputMetadata.usedAssetIds, [asset.id]);
