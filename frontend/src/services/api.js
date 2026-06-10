@@ -7,11 +7,14 @@ import { creationApi } from '../api/creation.api';
 import { generationTasksApi } from '../api/generationTasks.api';
 import { inspirationApi } from '../api/inspiration.api';
 import { scriptWorkflowTasksApi } from '../api/scriptWorkflowTasks.api';
+import { authApi } from '../api/auth.api';
 import { request } from '../api/http';
 
 export { assetsApi, materialsApi, creationApi, generationTasksApi };
 
 export const api = {
+  getAuthStatus: authApi.status,
+  loginWithArkKey: authApi.login,
   listProjects: projectsApi.list,
   createProject: projectsApi.create,
   updateProject: projectsApi.update,

@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { ROOT_DIR } = require('./paths');
 
+const PROJECT_ENV_FILE = path.resolve(ROOT_DIR, '..', '.env');
+const BACKEND_ENV_FILE = path.resolve(ROOT_DIR, '.env');
+
 function parseEnvLine(line) {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith('#')) return null;
@@ -33,10 +36,12 @@ function loadEnvFile(filePath) {
 }
 
 function loadProjectEnv() {
-  loadEnvFile(path.resolve(ROOT_DIR, '..', '.env'));
-  loadEnvFile(path.resolve(ROOT_DIR, '.env'));
+  loadEnvFile(PROJECT_ENV_FILE);
+  loadEnvFile(BACKEND_ENV_FILE);
 }
 
 module.exports = {
   loadProjectEnv,
+  PROJECT_ENV_FILE,
+  BACKEND_ENV_FILE,
 };

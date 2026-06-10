@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 router.use('/health', require('./health.routes'));
+router.use('/auth', require('./auth.routes'));
 router.use('/assets', require('./global-assets.routes'));
 router.use('/projects/:projectId/assets', require('./assets.routes'));
 router.use('/projects/:projectId/materials', require('./materials.compat.routes'));

@@ -128,8 +128,62 @@ function TaskDetailPage({ task, onBack, onRetry, disabled, resolveMediaUrl }) {
   );
 }
 
+function LoginPage({ onLogin, statusError = '' }) {
+  const [arkApiKey, setArkApiKey] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await onLogin(arkApiKey);
+      setArkApiKey('');
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="login-screen">
+      <form className="login-panel" onSubmit={submit}>
+        <div>
+          <p className="login-kicker">SellDance Studio</p>
+          <h1>Connect Ark</h1>
+          <p className="login-copy">
+            Enter the Ark API key for this server. The key is written to the backend .env file and used by Seed 2.0 and SeedDance calls.
+          </p>
+        </div>
+        <label>
+          <span>Ark API key</span>
+          <input
+            type="password"
+            value={arkApiKey}
+            onChange={(event) => setArkApiKey(event.target.value)}
+            placeholder="Paste your Ark API key"
+            autoComplete="off"
+            required
+          />
+        </label>
+        {statusError ? <div className="login-error">{statusError}</div> : null}
+        {error ? <div className="login-error">{error}</div> : null}
+        <button type="submit" disabled={submitting || !arkApiKey.trim()}>
+          {submitting ? 'Connecting...' : 'Enter Studio'}
+        </button>
+        <small>The key is not stored in browser localStorage.</small>
+      </form>
+    </div>
+  );
+}
+
 function App() {
   const [route, setRoute] = useState(() => parseRoute());
+  const [authStatus, setAuthStatus] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [materials, setMaterials] = useState([]);
@@ -177,6 +231,28 @@ function App() {
     () => projects.find((project) => project.id === selectedProjectId),
     [projects, selectedProjectId]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getAuthStatus()
+      .then((status) => {
+        if (!cancelled) setAuthStatus(status);
+      })
+      .catch((error) => {
+        if (!cancelled) setAuthError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogin = useCallback(async (arkApiKey) => {
+    const status = await api.loginWithArkKey(arkApiKey);
+    setAuthStatus(status);
+    setAuthError('');
+    return status;
+  }, []);
 
   const clearProjectScopedState = useCallback(() => {
     setMaterials([]);
@@ -298,8 +374,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+    if (authStatus?.arkApiKeyConfigured) loadProjects();
+  }, [authStatus?.arkApiKeyConfigured, loadProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -516,6 +592,27 @@ function App() {
   const visibleInspirationTask = inspirationWorkflowTask?.id && !dismissedInspirationTaskIds.includes(inspirationWorkflowTask.id) ? inspirationWorkflowTask : null;
   const visibleScriptTask = scriptWorkflowTask?.id && !dismissedScriptTaskIds.includes(scriptWorkflowTask.id) ? scriptWorkflowTask : null;
   const visibleCreationWorkflowTask = creationWorkflowTask?.id && !dismissedCreationWorkflowTaskIds.includes(creationWorkflowTask.id) ? creationWorkflowTask : null;
+
+  if (authLoading) {
+    return (
+      <div className="login-screen">
+        <div className="login-panel">
+          <p className="login-kicker">SellDance Studio</p>
+          <h1>Loading</h1>
+          <p className="login-copy">Checking backend configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authStatus?.arkApiKeyConfigured) {
+    return (
+      <LoginPage
+        onLogin={handleLogin}
+        statusError={authError}
+      />
+    );
+  }
 
   return (
     <div className="layout">
