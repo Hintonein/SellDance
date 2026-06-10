@@ -38,12 +38,24 @@ function videoSummary(asset) {
 function isVideoAsset(asset) {
   return asset?.mediaType === 'video' || String(asset?.mimeType || '').startsWith('video/') || String(asset?.type || '').includes('video');
 }
-function assetPreviewUrl(asset) {
+function isVideoLikeUrl(url = '') {
+  return /\.(mp4|mov|m4v|webm|avi|mkv)(\?|#|$)/i.test(String(url || ''));
+}
+function assetThumbnailUrl(asset) {
   if (!asset) return '';
   if (isVideoAsset(asset)) {
-    return asset.previewUrl || asset.browserPreviewUrl || asset.metadata?.video?.previewUrl || asset.fileUrl || asset.url || asset.thumbnailUrl || '';
+    const sourceUrls = new Set([asset.fileUrl, asset.url, asset.previewUrl, asset.browserPreviewUrl, asset.metadata?.video?.previewUrl].filter(Boolean));
+    return [
+      asset.thumbnailUrl,
+      asset.slices?.[0]?.thumbnailUrl,
+      asset.analysis?.thumbnailUrl,
+    ].find((url) => url && !sourceUrls.has(url) && !isVideoLikeUrl(url)) || '';
   }
   return asset.thumbnailUrl || asset.fileUrl || asset.url || '';
+}
+function assetPlayableUrl(asset) {
+  if (!asset || !isVideoAsset(asset)) return '';
+  return asset.previewUrl || asset.browserPreviewUrl || asset.metadata?.video?.previewUrl || asset.fileUrl || asset.url || '';
 }
 
 function providerLabel(asset) {
@@ -404,7 +416,12 @@ export default function MaterialPage({
         {!isAssetDetailCollapsed ? (
           <>
             <div className="asset-detail-hero">
-              <AssetPreview asset={selectedAsset} previewUrl={resolveMediaUrl(assetPreviewUrl(selectedAsset))} />
+              <AssetPreview
+                asset={selectedAsset}
+                thumbnailUrl={resolveMediaUrl(assetThumbnailUrl(selectedAsset))}
+                playableUrl={resolveMediaUrl(assetPlayableUrl(selectedAsset))}
+                preferPlayback
+              />
               <div className="asset-detail-main">
                 <dl className="detail-list">
                   <div><dt>ID</dt><dd>{selectedId}</dd></div>
@@ -517,12 +534,13 @@ export default function MaterialPage({
         <div className="asset-library">
           {sortedMaterials.map((asset) => {
             const id = assetId(asset);
-            const previewUrl = resolveMediaUrl(assetPreviewUrl(asset));
+            const thumbnailUrl = resolveMediaUrl(assetThumbnailUrl(asset));
+            const playableUrl = resolveMediaUrl(assetPlayableUrl(asset));
             const isCurrentAssetAnalyzing = analyzingAssetId === id || activeAssetAnalysisIds.has(id);
             return (
               <div className="asset-card-stack" key={id}>
                 <article className="card asset-card">
-                  <AssetPreview asset={asset} previewUrl={previewUrl} onOpen={() => selectAsset(asset)} />
+                  <AssetPreview asset={asset} thumbnailUrl={thumbnailUrl} playableUrl={playableUrl} onOpen={() => selectAsset(asset)} />
                   <div className="asset-body">
                     <div className="asset-header">
                       <div className="asset-title-block">

@@ -853,6 +853,29 @@ button:disabled {
   background: #020617;
 }
 
+.asset-preview-play {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  border-radius: 999px;
+  background: rgb(2 132 199 / 0.88);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.16rem 0.48rem;
+}
+
+.asset-preview-unavailable {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0.8rem;
+  text-align: center;
+  background: #f1f5f9;
+  color: #475569;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
