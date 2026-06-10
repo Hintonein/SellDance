@@ -116,7 +116,8 @@ async function searchSlices(projectId, query = {}) {
   const rows = (await allSlices()).map((s, i) => normalizeSlice(s.projectId, s.assetId, s, i));
   let items = rows.filter((s) => s.projectId === projectId || s.projectId === 'global');
   if (query.assetId) items = items.filter((s) => s.assetId === query.assetId);
-  if (Array.isArray(query.assetIds) && query.assetIds.length) {
+  if (Array.isArray(query.assetIds)) {
+    if (!query.assetIds.length) return { items: [], total: 0 };
     const ids = new Set(query.assetIds);
     items = items.filter((s) => ids.has(s.assetId));
   }

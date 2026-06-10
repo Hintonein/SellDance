@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { getAsset, getAssetSlice, recallAssets } = require('./asset.service');
+const { getAsset, getAssetSlice, listAllAssets, recallAssets } = require('./asset.service');
 const { searchSlices } = require('./asset-slice.service');
 const { getStoryboard } = require('./storyboard.service');
 const { matchAssetsForScene } = require('./scene-asset-matching.service');
@@ -126,7 +126,9 @@ async function clipFromAssetSelection(projectId, assetId, sliceId, order, target
 }
 
 async function clipFromSliceSelection(projectId, sliceId, order, targetStepDuration) {
-  const result = await searchSlices(projectId, {});
+  const projectAssets = await listAllAssets(projectId);
+  const assetIds = projectAssets.map((asset) => asset.id).filter(Boolean);
+  const result = await searchSlices(projectId, { assetIds });
   const slice = result.items.find((item) => item.id === sliceId);
   if (!slice) {
     const error = new Error(`Asset slice ${sliceId} does not belong to project ${projectId}.`);

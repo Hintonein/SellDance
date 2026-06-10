@@ -178,6 +178,23 @@ function App() {
     [projects, selectedProjectId]
   );
 
+  const clearProjectScopedState = useCallback(() => {
+    setMaterials([]);
+    setScriptRecord(null);
+    setScriptText('');
+    setStoryboardRecord(null);
+    setScenes([]);
+    setEditingPlan(null);
+    setTasks([]);
+    setInspirationVideos([]);
+    setInspirationTemplates([]);
+    setCrawlerTask(null);
+    setInspirationWorkflowTask(null);
+    setScriptWorkflowTask(null);
+    setCreationWorkflowTask(null);
+    setAssetGenerationTask(null);
+  }, []);
+
   const assetGenerationElapsedMs = useMemo(() => {
     if (!assetGenerationTask) return 0;
     const endTime = ['ready', 'failed'].includes(assetGenerationTask.status)
@@ -218,9 +235,10 @@ function App() {
 
   useEffect(() => {
     if (routeProjectId && routeProjectId !== selectedProjectId) {
+      clearProjectScopedState();
       setSelectedProjectId(routeProjectId);
     }
-  }, [routeProjectId, selectedProjectId]);
+  }, [clearProjectScopedState, routeProjectId, selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -229,7 +247,7 @@ function App() {
     if (!current.projectId) navigate(projectPath(selectedProjectId));
   }, [navigate, selectedProjectId]);
 
-  const loadProjectData = async (projectId) => {
+  const loadProjectData = useCallback(async (projectId) => {
     const [materialsData, globalAssetsData, scriptData, storyboardData, taskData, inspirationVideoData, inspirationTemplateData, crawlerTaskData, workflowTaskData, scriptWorkflowTaskData, creationWorkflowTaskData] = await Promise.all([
       api.listAssets(projectId),
       api.listGlobalAssets(),
@@ -244,30 +262,60 @@ function App() {
       api.listCreationWorkflowTasks(projectId),
     ]);
 
-    setMaterials(normalizeAssetsResponse(materialsData));
-    setGlobalAssets(normalizeAssetsResponse(globalAssetsData));
+    return {
+      projectId,
+      materials: normalizeAssetsResponse(materialsData),
+      globalAssets: normalizeAssetsResponse(globalAssetsData),
+      scriptData,
+      storyboardData,
+      taskData,
+      inspirationVideoData,
+      inspirationTemplateData,
+      crawlerTaskData,
+      workflowTaskData,
+      scriptWorkflowTaskData,
+      creationWorkflowTaskData,
+    };
+  }, []);
+
+  const applyProjectData = useCallback((data) => {
+    setMaterials(data.materials);
+    setGlobalAssets(data.globalAssets);
+    const scriptData = data.scriptData || {};
+    const storyboardData = data.storyboardData || {};
     setScriptRecord(scriptData.scriptId ? scriptData : null);
     setScriptText(scriptData.scriptText || '');
     setStoryboardRecord(storyboardData.storyboardId ? storyboardData : null);
     setScenes(storyboardData.scenes || []);
     setEditingPlan(null);
-    setTasks(taskData);
-    setInspirationVideos(inspirationVideoData);
-    setInspirationTemplates(inspirationTemplateData);
-    setCrawlerTask(crawlerTaskData[0] || null);
-    setInspirationWorkflowTask(workflowTaskData[0] || null);
-    setScriptWorkflowTask(scriptWorkflowTaskData[0] || null);
-    setCreationWorkflowTask(creationWorkflowTaskData[0] || null);
-  };
+    setTasks(data.taskData || []);
+    setInspirationVideos(data.inspirationVideoData || []);
+    setInspirationTemplates(data.inspirationTemplateData || []);
+    setCrawlerTask(data.crawlerTaskData?.[0] || null);
+    setInspirationWorkflowTask(data.workflowTaskData?.[0] || null);
+    setScriptWorkflowTask(data.scriptWorkflowTaskData?.[0] || null);
+    setCreationWorkflowTask(data.creationWorkflowTaskData?.[0] || null);
+  }, []);
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
 
   useEffect(() => {
-    if (!selectedProjectId) return;
-    withToast(() => loadProjectData(selectedProjectId), 'Project data synced.');
-  }, [selectedProjectId]);
+    if (!selectedProjectId) {
+      clearProjectScopedState();
+      return undefined;
+    }
+    clearProjectScopedState();
+    let cancelled = false;
+    const projectId = selectedProjectId;
+    withToast(async () => {
+      const data = await loadProjectData(projectId);
+      if (!cancelled && projectId === selectedProjectId) applyProjectData(data);
+      return data;
+    }, 'Project data synced.');
+    return () => { cancelled = true; };
+  }, [applyProjectData, clearProjectScopedState, loadProjectData, selectedProjectId]);
 
   useEffect(() => {
     if (!selectedProjectId || !crawlerTask?.id || ['succeeded', 'partial', 'failed', 'timeout', 'cancelled'].includes(crawlerTask.status)) return undefined;

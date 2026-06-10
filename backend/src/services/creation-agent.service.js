@@ -176,7 +176,8 @@ async function buildSmartEditingPlan(projectId, payload = {}, options = {}) {
   const script = await getScript(projectId).catch(() => null);
   const storyboard = await getStoryboard(projectId).catch(() => null);
   const assets = await listAllAssets(projectId);
-  const slices = (await searchSlices(projectId, {})).items || [];
+  const assetIds = assets.map(assetId).filter(Boolean);
+  const slices = (await searchSlices(projectId, { assetIds })).items || [];
   const scenes = Array.isArray(payload.scenes) && payload.scenes.length
     ? payload.scenes
     : Array.isArray(storyboard?.scenes) && storyboard.scenes.length
