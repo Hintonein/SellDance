@@ -210,8 +210,8 @@ function StoryboardTimelineEditor({
                     Edit
                   </button>
                   {generatedVideoUrl ? (
-                    <a className="button-link secondary" href={generatedVideoUrl} target="_blank" rel="noreferrer">
-                      Open video
+                    <a className="button-link secondary" href={generatedVideoUrl} target="_blank" rel="noreferrer" title="Open video source">
+                      Open
                     </a>
                   ) : null}
                 </div>
