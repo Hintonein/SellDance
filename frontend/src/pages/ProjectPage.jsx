@@ -4,8 +4,12 @@ import PageShell from '../components/PageShell';
 const DEFAULT_EXPECTED_DURATION_SECONDS = 15;
 const MAX_EXPECTED_DURATION_SECONDS = 300;
 
-export default function ProjectPage({ projects, selectedProjectId, onSelect, onCreate, onArchive }) {
+export default function ProjectPage({ projects, selectedProjectId, onSelect, onCreate, onArchive, authStatus, onUpdateArkKey }) {
   const [showCreate, setShowCreate] = useState(false);
+  const [showArkKeyForm, setShowArkKeyForm] = useState(false);
+  const [arkApiKey, setArkApiKey] = useState('');
+  const [arkSaving, setArkSaving] = useState(false);
+  const [arkError, setArkError] = useState('');
   const [form, setForm] = useState({
     name: '',
     productName: '',
@@ -44,11 +48,67 @@ export default function ProjectPage({ projects, selectedProjectId, onSelect, onC
     setShowCreate(false);
   };
 
+  const submitArkKey = async (event) => {
+    event.preventDefault();
+    setArkError('');
+    setArkSaving(true);
+    try {
+      await onUpdateArkKey(arkApiKey);
+      setArkApiKey('');
+      setShowArkKeyForm(false);
+    } catch (error) {
+      setArkError(error.message);
+    } finally {
+      setArkSaving(false);
+    }
+  };
+
   return (
     <PageShell
       title="Project setup"
       description="Open an existing project or create a new product video workflow."
     >
+      <section className="card section-card">
+        <div className="section-heading">
+          <div>
+            <h3>Ark connection</h3>
+            <p>
+              {authStatus?.arkApiKeyConfigured
+                ? `Configured: ${authStatus.arkApiKeyMasked || 'available'}`
+                : 'Ark API key is not configured.'}
+            </p>
+          </div>
+          <button type="button" onClick={() => setShowArkKeyForm((prev) => !prev)}>
+            {showArkKeyForm ? 'Close' : 'Change API key'}
+          </button>
+        </div>
+        {showArkKeyForm ? (
+          <form className="inline-config-form" onSubmit={submitArkKey}>
+            <label>
+              Ark API key
+              <input
+                type="password"
+                value={arkApiKey}
+                onChange={(event) => setArkApiKey(event.target.value)}
+                placeholder="Paste a new Ark API key"
+                autoComplete="off"
+                required
+              />
+            </label>
+            {arkError ? <div className="message error-message">{arkError}</div> : null}
+            <div className="button-row">
+              <button type="submit" disabled={arkSaving || !arkApiKey.trim()}>
+                {arkSaving ? 'Saving...' : 'Save API key'}
+              </button>
+              <button type="button" onClick={() => { setShowArkKeyForm(false); setArkApiKey(''); setArkError(''); }} disabled={arkSaving}>
+                Cancel
+              </button>
+            </div>
+            <small>The key is written to the backend .env file and is not stored in browser localStorage.</small>
+          </form>
+        ) : null}
+      </section>
+
       <section className="card section-card">
         <div className="section-heading">
           <div>

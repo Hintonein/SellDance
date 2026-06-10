@@ -256,6 +256,14 @@ function App() {
     return status;
   }, []);
 
+  const handleUpdateArkKey = useCallback(async (arkApiKey) => {
+    const status = await api.loginWithArkKey(arkApiKey);
+    setAuthStatus(status);
+    setAuthError('');
+    setMessage('Ark API key updated.');
+    return status;
+  }, []);
+
   const clearProjectScopedState = useCallback(() => {
     setMaterials([]);
     setScriptRecord(null);
@@ -840,6 +848,8 @@ function App() {
           <ProjectPage
             projects={projects}
             selectedProjectId={selectedProjectId}
+            authStatus={authStatus}
+            onUpdateArkKey={handleUpdateArkKey}
             onSelect={(projectId) => {
               setSelectedProjectId(projectId);
               navigate(projectPath(projectId));
