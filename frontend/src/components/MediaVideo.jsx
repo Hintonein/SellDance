@@ -22,6 +22,8 @@ const MediaVideo = forwardRef(function MediaVideo({
   loop = false,
   playsInline = true,
   preload = 'metadata',
+  showActions = true,
+  sourceLabel = 'Open source',
 }, ref) {
   const [error, setError] = useState('');
 
@@ -45,10 +47,12 @@ const MediaVideo = forwardRef(function MediaVideo({
         src={src}
         onError={(event) => setError(mediaErrorMessage(event.currentTarget.error))}
       />
-      <div className="media-video-actions">
-        <a href={src} target="_blank" rel="noreferrer">Open source</a>
-        <span>{label}</span>
-      </div>
+      {showActions ? (
+        <div className="media-video-actions">
+          <a href={src} target="_blank" rel="noreferrer">{sourceLabel}</a>
+          <span>{label}</span>
+        </div>
+      ) : null}
       {error ? (
         <p className="media-video-error">
           {error} Check the source URL or backend static file service.

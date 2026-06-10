@@ -1271,6 +1271,25 @@ code {
   object-fit: contain;
 }
 
+.timeline-video-shell {
+  width: 100%;
+}
+
+.timeline-block-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.timeline-block-actions button,
+.timeline-block-actions a {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+
 .media-video-shell {
   display: grid;
   gap: 0.35rem;

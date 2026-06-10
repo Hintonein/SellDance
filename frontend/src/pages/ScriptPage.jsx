@@ -174,6 +174,7 @@ function StoryboardTimelineEditor({
         <div className="storyboard-timeline" aria-label="Storyboard timeline">
           {scenes.map((scene, index) => {
             const id = storyboardSceneId(scene, index);
+            const generatedVideoUrl = scene.generatedVideoUrl ? resolveMediaUrl(scene.generatedVideoUrl) : '';
             return (
               <article
                 key={id}
@@ -192,8 +193,9 @@ function StoryboardTimelineEditor({
                   <MediaVideo
                     className="timeline-video"
                     muted
-                    src={resolveMediaUrl(scene.generatedVideoUrl)}
+                    src={generatedVideoUrl}
                     label={`Scene ${scene.order || scene.sceneOrder || index + 1}`}
+                    showActions={false}
                   />
                 ) : null}
                 <p>{sceneSummary(scene)}</p>
@@ -203,9 +205,16 @@ function StoryboardTimelineEditor({
                 {scene.dialogueLanguage ? <small>Dialogue {scene.dialogueLanguage}</small> : null}
                 {scene.seed2PlanningConfidence !== undefined ? <small>Seed2 confidence {Number(scene.seed2PlanningConfidence).toFixed(2)}</small> : null}
                 {(scene.sourceReferenceAssetIds || []).length ? <small>Refs {(scene.sourceReferenceAssetIds || []).join(', ')}</small> : null}
-                <button type="button" onClick={() => onOpenScene(id)} disabled={disabled || !hasStoryboard}>
-                  Edit
-                </button>
+                <div className="timeline-block-actions">
+                  <button type="button" onClick={() => onOpenScene(id)} disabled={disabled || !hasStoryboard}>
+                    Edit
+                  </button>
+                  {generatedVideoUrl ? (
+                    <a className="button-link secondary" href={generatedVideoUrl} target="_blank" rel="noreferrer">
+                      Open video
+                    </a>
+                  ) : null}
+                </div>
               </article>
             );
           })}
@@ -346,6 +355,7 @@ function StoryboardPreviewTimeline({ scenes, materials, resolveMediaUrl }) {
             muted={!previewIsGenerated}
             src={previewUrl}
             label={previewIsGenerated ? 'Generated storyboard video' : 'Fallback source asset'}
+            sourceLabel="Open video"
           />
         ) : null}
         {!previewIsVideo && activeAsset && previewUrl ? <img src={previewUrl} alt={assetName(activeAsset)} /> : null}
@@ -802,28 +812,6 @@ export default function ScriptPage({
 
       {activeSection === 'storyboard' ? (
         <>
-          <StoryboardTimelineEditor
-            disabled={disabled}
-            scenes={structuredScenes}
-            hasStoryboard={hasStoryboard}
-            scriptRecord={scriptRecord}
-            storyboardRecord={storyboardRecord}
-            scriptVersionOptions={versions}
-            selectedScriptVersionId={selectedStoryboardVersionId}
-            selectedScriptVersion={selectedStoryboardVersion}
-            scriptWorkflowRunning={scriptWorkflowRunning}
-            resolveMediaUrl={resolveMediaUrl}
-            onSelectScriptVersion={setSelectedStoryboardVersionId}
-            onGenerateStoryboard={generateStoryboard}
-            onDeleteStoryboard={onDeleteStoryboard}
-            onOpenScene={onNavigateStoryboardScene}
-            onReorderScenes={onReorderStoryboardScenes}
-          />
-          <StoryboardPreviewTimeline
-            scenes={structuredScenes}
-            materials={materials}
-            resolveMediaUrl={resolveMediaUrl}
-          />
           {detailId ? (
             <StoryboardSceneDetailPage
               disabled={disabled}
@@ -835,7 +823,32 @@ export default function ScriptPage({
               onRegenerate={onRegenerateStoryboardScene}
               onDelete={onDeleteStoryboardScene}
             />
-          ) : null}
+          ) : (
+            <>
+              <StoryboardTimelineEditor
+                disabled={disabled}
+                scenes={structuredScenes}
+                hasStoryboard={hasStoryboard}
+                scriptRecord={scriptRecord}
+                storyboardRecord={storyboardRecord}
+                scriptVersionOptions={versions}
+                selectedScriptVersionId={selectedStoryboardVersionId}
+                selectedScriptVersion={selectedStoryboardVersion}
+                scriptWorkflowRunning={scriptWorkflowRunning}
+                resolveMediaUrl={resolveMediaUrl}
+                onSelectScriptVersion={setSelectedStoryboardVersionId}
+                onGenerateStoryboard={generateStoryboard}
+                onDeleteStoryboard={onDeleteStoryboard}
+                onOpenScene={onNavigateStoryboardScene}
+                onReorderScenes={onReorderStoryboardScenes}
+              />
+              <StoryboardPreviewTimeline
+                scenes={structuredScenes}
+                materials={materials}
+                resolveMediaUrl={resolveMediaUrl}
+              />
+            </>
+          )}
         </>
       ) : null}
     </PageShell>
