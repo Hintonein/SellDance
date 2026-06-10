@@ -563,30 +563,38 @@ async function applySliceSuggestions(projectId, assetId, slices = [], suggestion
 }
 
 async function analyzeAsset(projectId, assetId, options = {}) {
-  return withAssetMutation(GLOBAL_ASSET_STORE_ID, async () => {
+  let processing = null;
+  await withAssetMutation(GLOBAL_ASSET_STORE_ID, async () => {
     const assets = await listGlobalAssetRecords();
     const index = assets.findIndex((asset) => asset.id === assetId || asset.assetId === assetId || asset.materialId === assetId);
     if (index === -1) return null;
     if (projectId !== GLOBAL_ASSET_STORE_ID && !(await listAllAssets(projectId)).some((asset) => asset.id === assets[index].id)) return null;
-    let processing = normalizeAsset(GLOBAL_ASSET_STORE_ID, { ...assets[index], projectId: GLOBAL_ASSET_STORE_ID, analysisStatus: 'processing', updatedAt: now() });
+    processing = normalizeAsset(GLOBAL_ASSET_STORE_ID, { ...assets[index], projectId: GLOBAL_ASSET_STORE_ID, analysisStatus: 'processing', updatedAt: now() });
     assets[index] = processing; await writeGlobalAssetRecords(assets);
-    try {
-      processing = await ensureVideoMetadata(processing);
-      const provider = options.provider || process.env.AI_ASSET_ANALYSIS_PROVIDER || 'mock';
-      let slicesForAnalysis = [];
-      let providerOptions = {};
-      if (processing.mediaType === 'video') {
-        slicesForAnalysis = await ensureVideoSlices(processing);
-      }
-      if (provider === 'seed2') {
-        providerOptions = await buildSeed2AnalyzeOptions(processing, slicesForAnalysis, options);
-      }
-      const modelProvider = require('./model-provider.service');
-      const analysis = await modelProvider.analyzeAsset(processing, { ...providerOptions, provider });
-      const metadata = providerOptions.frameSampling
-        ? { ...(processing.metadata || {}), video: processing.metadata?.video, frameSampling: providerOptions.frameSampling }
-        : processing.metadata;
-      const analyzed = normalizeAsset(GLOBAL_ASSET_STORE_ID, { ...processing, projectId: GLOBAL_ASSET_STORE_ID, metadata, analysisStatus: 'completed', analysis, analysisError: null, systemTags: mergeTags(processing.systemTags, analysis.tags), updatedAt: now() });
+    return processing;
+  });
+  if (!processing) return null;
+  try {
+    processing = await ensureVideoMetadata(processing);
+    const provider = options.provider || process.env.AI_ASSET_ANALYSIS_PROVIDER || 'mock';
+    let slicesForAnalysis = [];
+    let providerOptions = {};
+    if (processing.mediaType === 'video') {
+      slicesForAnalysis = await ensureVideoSlices(processing);
+    }
+    if (provider === 'seed2') {
+      providerOptions = await buildSeed2AnalyzeOptions(processing, slicesForAnalysis, options);
+    }
+    const modelProvider = require('./model-provider.service');
+    const analysis = await modelProvider.analyzeAsset(processing, { ...providerOptions, provider });
+    const metadata = providerOptions.frameSampling
+      ? { ...(processing.metadata || {}), video: processing.metadata?.video, frameSampling: providerOptions.frameSampling }
+      : processing.metadata;
+    const analyzed = normalizeAsset(GLOBAL_ASSET_STORE_ID, { ...processing, projectId: GLOBAL_ASSET_STORE_ID, metadata, analysisStatus: 'completed', analysis, analysisError: null, systemTags: mergeTags(processing.systemTags, analysis.tags), updatedAt: now() });
+    return withAssetMutation(GLOBAL_ASSET_STORE_ID, async () => {
+      const assets = await listGlobalAssetRecords();
+      const index = assets.findIndex((asset) => asset.id === analyzed.id || asset.assetId === analyzed.id || asset.materialId === analyzed.id);
+      if (index === -1) return null;
       assets[index] = analyzed;
       let createdSlices = [];
       if (analyzed.mediaType === 'video') {
@@ -607,11 +615,17 @@ async function analyzeAsset(projectId, assetId, options = {}) {
       await writeGlobalAssetRecords(assets);
       const link = projectId === GLOBAL_ASSET_STORE_ID ? null : (await listProjectAssetLinks(projectId)).find((item) => item.assetId === finalAsset.id);
       return { ...(projectId === GLOBAL_ASSET_STORE_ID ? finalAsset : attachProjectLink(projectId, finalAsset, link)), slices: createdSlices };
-    } catch (error) {
+    });
+  } catch (error) {
+    await withAssetMutation(GLOBAL_ASSET_STORE_ID, async () => {
+      const assets = await listGlobalAssetRecords();
+      const index = assets.findIndex((asset) => asset.id === processing.id || asset.assetId === processing.id || asset.materialId === processing.id);
+      if (index === -1) return null;
       const failed = normalizeAsset(GLOBAL_ASSET_STORE_ID, { ...processing, projectId: GLOBAL_ASSET_STORE_ID, analysisStatus: 'failed', analysisError: buildAnalysisError(error, options.provider || process.env.AI_ASSET_ANALYSIS_PROVIDER || 'mock'), updatedAt: now() });
       assets[index] = failed; await writeGlobalAssetRecords(assets); throw error;
-    }
-  });
+    });
+    throw error;
+  }
 }
 async function getAssetSlices(projectId, assetId) {
   const asset = await getAsset(projectId, assetId); if (!asset) return null;

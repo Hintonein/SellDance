@@ -33,6 +33,8 @@ export const api = {
   searchAssets: assetsApi.search,
   recallAssets: assetsApi.recall,
   analyzeAsset: assetsApi.analyze,
+  listAssetAnalysisTasks: assetsApi.listAnalysisTasks,
+  getAssetAnalysisTask: assetsApi.getAnalysisTask,
   getAssetSlices: assetsApi.getSlices,
   listMaterials: materialsApi.list,
   uploadMaterial: assetsApi.upload,

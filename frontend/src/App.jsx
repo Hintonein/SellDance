@@ -201,7 +201,9 @@ function App() {
   const [dismissedInspirationTaskIds, setDismissedInspirationTaskIds] = useState([]);
   const [dismissedScriptTaskIds, setDismissedScriptTaskIds] = useState([]);
   const [dismissedCreationWorkflowTaskIds, setDismissedCreationWorkflowTaskIds] = useState([]);
+  const [dismissedAssetAnalysisTaskIds, setDismissedAssetAnalysisTaskIds] = useState([]);
   const [assetGenerationTask, setAssetGenerationTask] = useState(null);
+  const [assetAnalysisTasks, setAssetAnalysisTasks] = useState([]);
   const [assetGenerationNow, setAssetGenerationNow] = useState(Date.now());
   const [inspirationVideos, setInspirationVideos] = useState([]);
   const [inspirationTemplates, setInspirationTemplates] = useState([]);
@@ -269,6 +271,7 @@ function App() {
     setScriptWorkflowTask(null);
     setCreationWorkflowTask(null);
     setAssetGenerationTask(null);
+    setAssetAnalysisTasks([]);
   }, []);
 
   const assetGenerationElapsedMs = useMemo(() => {
@@ -324,7 +327,20 @@ function App() {
   }, [navigate, selectedProjectId]);
 
   const loadProjectData = useCallback(async (projectId) => {
-    const [materialsData, globalAssetsData, scriptData, storyboardData, taskData, inspirationVideoData, inspirationTemplateData, crawlerTaskData, workflowTaskData, scriptWorkflowTaskData, creationWorkflowTaskData] = await Promise.all([
+    const [
+      materialsData,
+      globalAssetsData,
+      scriptData,
+      storyboardData,
+      taskData,
+      inspirationVideoData,
+      inspirationTemplateData,
+      crawlerTaskData,
+      workflowTaskData,
+      scriptWorkflowTaskData,
+      creationWorkflowTaskData,
+      assetAnalysisTaskData,
+    ] = await Promise.all([
       api.listAssets(projectId),
       api.listGlobalAssets(),
       api.getScript(projectId),
@@ -336,6 +352,7 @@ function App() {
       api.listInspirationWorkflowTasks(projectId),
       api.listScriptWorkflowTasks(projectId),
       api.listCreationWorkflowTasks(projectId),
+      api.listAssetAnalysisTasks(projectId),
     ]);
 
     return {
@@ -351,6 +368,7 @@ function App() {
       workflowTaskData,
       scriptWorkflowTaskData,
       creationWorkflowTaskData,
+      assetAnalysisTaskData,
     };
   }, []);
 
@@ -371,6 +389,7 @@ function App() {
     setInspirationWorkflowTask(data.workflowTaskData?.[0] || null);
     setScriptWorkflowTask(data.scriptWorkflowTaskData?.[0] || null);
     setCreationWorkflowTask(data.creationWorkflowTaskData?.[0] || null);
+    setAssetAnalysisTasks(data.assetAnalysisTaskData || []);
   }, []);
 
   useEffect(() => {
@@ -538,6 +557,34 @@ function App() {
   }, [selectedProjectId]);
 
   useEffect(() => {
+    if (!selectedProjectId) return undefined;
+    const activeAnalysisTasks = assetAnalysisTasks.filter((task) => ['queued', 'running'].includes(task.status));
+    if (!activeAnalysisTasks.length) return undefined;
+    const poll = async () => {
+      try {
+        const [nextTasks, nextMaterials, nextGlobalAssets] = await Promise.all([
+          api.listAssetAnalysisTasks(selectedProjectId),
+          api.listAssets(selectedProjectId),
+          api.listGlobalAssets(),
+        ]);
+        setAssetAnalysisTasks(nextTasks);
+        setMaterials(normalizeAssetsResponse(nextMaterials));
+        setGlobalAssets(normalizeAssetsResponse(nextGlobalAssets));
+        const completed = nextTasks.filter((task) => ['completed', 'failed'].includes(task.status) && activeAnalysisTasks.some((active) => active.id === task.id));
+        if (completed.length) {
+          const failed = completed.filter((task) => task.status === 'failed').length;
+          setMessage(failed ? `${completed.length} asset analysis task(s) finished, ${failed} failed.` : `${completed.length} asset analysis task(s) completed.`);
+        }
+      } catch (error) {
+        setMessage(`Asset analysis polling failed: ${error.message}`);
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 1500);
+    return () => clearInterval(timer);
+  }, [assetAnalysisTasks, selectedProjectId]);
+
+  useEffect(() => {
     if (!assetGenerationTask || ['ready', 'failed'].includes(assetGenerationTask.status)) return undefined;
     const timer = setInterval(() => setAssetGenerationNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -592,6 +639,9 @@ function App() {
   const visibleInspirationTask = inspirationWorkflowTask?.id && !dismissedInspirationTaskIds.includes(inspirationWorkflowTask.id) ? inspirationWorkflowTask : null;
   const visibleScriptTask = scriptWorkflowTask?.id && !dismissedScriptTaskIds.includes(scriptWorkflowTask.id) ? scriptWorkflowTask : null;
   const visibleCreationWorkflowTask = creationWorkflowTask?.id && !dismissedCreationWorkflowTaskIds.includes(creationWorkflowTask.id) ? creationWorkflowTask : null;
+  const visibleAssetAnalysisTasks = assetAnalysisTasks
+    .filter((task) => task.id && !dismissedAssetAnalysisTaskIds.includes(task.id))
+    .slice(0, 5);
 
   if (authLoading) {
     return (
@@ -658,6 +708,24 @@ function App() {
                 {assetGenerationTask.error ? <small>{assetGenerationTask.error}</small> : null}
               </div>
             ) : null}
+            {visibleAssetAnalysisTasks.map((task) => (
+              <div className="global-task" key={task.id}>
+                <div className="global-task-header">
+                  <strong>Asset analysis</strong>
+                  <span>{task.stage || task.status}</span>
+                </div>
+                <div className="inline-progress"><span style={{ width: `${task.progress || 0}%` }} /></div>
+                <div className="global-task-meta">
+                  <span>{task.assetTitle || task.assetId}</span>
+                  <span>{task.provider || 'seed2'}</span>
+                </div>
+                {task.logs?.length ? <small>{task.logs.at(-1).message}</small> : null}
+                {task.error ? <small>{task.error.message || task.error}</small> : null}
+                {['completed', 'failed', 'cancelled'].includes(task.status) ? (
+                  <button type="button" onClick={() => setDismissedAssetAnalysisTaskIds((prev) => [...prev, task.id])}>Dismiss</button>
+                ) : null}
+              </div>
+            ))}
             {visibleStatusTask ? (
               <div className="global-task">
                 <div className="global-task-header">
@@ -874,6 +942,7 @@ function App() {
               })()
             }
             generationTask={selectedProjectGenerationTask}
+            analysisTasks={assetAnalysisTasks}
             isGenerating={isSelectedProjectGenerating}
             generationElapsedLabel={assetGenerationElapsedLabel}
             section={route.section || 'project'}
@@ -883,10 +952,12 @@ function App() {
             onBackToAssets={() => navigate(projectPath(selectedProjectId, 'materials', 'project'))}
             onReanalyze={(assetId) =>
               withToast(async () => {
-                const analyzed = await api.reanalyzeAsset(selectedProjectId, assetId);
+                const task = await api.reanalyzeAsset(selectedProjectId, assetId);
+                setAssetAnalysisTasks((prev) => [task, ...prev.filter((item) => item.id !== task.id)]);
                 setMaterials(normalizeAssetsResponse(await api.listAssets(selectedProjectId)));
-                return analyzed;
-              }, 'Material reanalyzed.')
+                setMessage('Asset analysis task created. You can start other analyses while it runs.');
+                return task;
+              }, 'Asset analysis task created.')
             }
             onRefresh={() => api.listAssets(selectedProjectId).then((response) => setMaterials(normalizeAssetsResponse(response)))}
           />

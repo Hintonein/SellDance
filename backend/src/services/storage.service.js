@@ -8,6 +8,7 @@ const {
   STORYBOARDS_DIR,
   TASKS_DIR,
   ASSET_GENERATION_TASKS_FILE,
+  ASSET_ANALYSIS_TASKS_FILE,
   COMPLIANCE_REVIEWS_FILE,
   DISTRIBUTION_EVENTS_FILE,
   CONVERSION_EVENTS_FILE,
@@ -243,6 +244,14 @@ async function writeAssetGenerationTasks(tasks) {
   await writeJsonFile(ASSET_GENERATION_TASKS_FILE, tasks);
 }
 
+async function listAssetAnalysisTasks() {
+  return readJsonFile(ASSET_ANALYSIS_TASKS_FILE, []);
+}
+
+async function writeAssetAnalysisTasks(tasks) {
+  await writeJsonFile(ASSET_ANALYSIS_TASKS_FILE, tasks);
+}
+
 async function listComplianceReviews() {
   return readJsonFile(COMPLIANCE_REVIEWS_FILE, []);
 }
@@ -303,6 +312,8 @@ module.exports = {
   writeCreationWorkflowTasks,
   listAssetGenerationTasks,
   writeAssetGenerationTasks,
+  listAssetAnalysisTasks,
+  writeAssetAnalysisTasks,
   listComplianceReviews,
   writeComplianceReviews,
   writeDistributionEvents,

@@ -88,6 +88,7 @@ export default function MaterialPage({
   onReanalyze,
   onRefresh,
   generationTask,
+  analysisTasks = [],
   isGenerating,
   generationElapsedLabel,
   section = 'project',
@@ -124,6 +125,10 @@ export default function MaterialPage({
   const [generationPanelClosed, setGenerationPanelClosed] = useState(false);
   const [globalCategory, setGlobalCategory] = useState('');
   const [error, setError] = useState('');
+  const activeAssetAnalysisIds = useMemo(
+    () => new Set((analysisTasks || []).filter((task) => ['queued', 'running'].includes(task.status)).map((task) => task.assetId)),
+    [analysisTasks]
+  );
 
   const sortedMaterials = useMemo(
     () => [...materials].sort((a, b) => String(b.createdAt || b.uploadedAt).localeCompare(String(a.createdAt || a.uploadedAt))),
@@ -298,10 +303,10 @@ export default function MaterialPage({
     setError('');
     setAnalyzingAssetId(id);
     try {
-      const analyzed = await onReanalyze(id);
-      setSelectedAsset(analyzed);
-      const result = await onGetSlices(assetId(analyzed));
-      setSlices(result.items || []);
+      await onReanalyze(id);
+      if (selectedAsset && assetId(selectedAsset) === id) {
+        setSelectedAsset((prev) => prev ? { ...prev, analysisStatus: 'processing', analysisError: null } : prev);
+      }
       await onRefresh();
     } catch (analyzeError) {
       setError(analyzeError.message);
@@ -379,8 +384,7 @@ export default function MaterialPage({
   const renderSelectedAssetDetailPanel = () => {
     if (!selectedAsset) return null;
     const selectedId = assetId(selectedAsset);
-    const isCurrentAssetAnalyzing = analyzingAssetId === selectedId;
-    const isAnotherAssetAnalyzing = Boolean(analyzingAssetId && analyzingAssetId !== selectedId);
+    const isCurrentAssetAnalyzing = analyzingAssetId === selectedId || activeAssetAnalysisIds.has(selectedId);
     return (
       <div className="asset-detail-panel inline-detail">
         <div className="section-heading">
@@ -434,7 +438,7 @@ export default function MaterialPage({
               {selectedAssetInProject ? (
                 <>
                   <button type="button" onClick={saveSelectedAsset} disabled={disabled || isSaving}>{isSaving ? 'Saving...' : 'Save asset'}</button>
-                  <AssetAnalyzeButton disabled={disabled || isAnotherAssetAnalyzing} isAnalyzing={isCurrentAssetAnalyzing} onAnalyze={() => analyzeSelectedAsset(selectedAsset)} label="Reanalyze" />
+                  <AssetAnalyzeButton disabled={disabled} isAnalyzing={isCurrentAssetAnalyzing} onAnalyze={() => analyzeSelectedAsset(selectedAsset)} label="Reanalyze" />
                   <button type="button" onClick={() => deleteAsset(selectedAsset)} disabled={disabled}>Delete</button>
                 </>
               ) : (
@@ -514,8 +518,7 @@ export default function MaterialPage({
           {sortedMaterials.map((asset) => {
             const id = assetId(asset);
             const previewUrl = resolveMediaUrl(assetPreviewUrl(asset));
-            const isCurrentAssetAnalyzing = analyzingAssetId === id;
-            const isAnotherAssetAnalyzing = Boolean(analyzingAssetId && analyzingAssetId !== id);
+            const isCurrentAssetAnalyzing = analyzingAssetId === id || activeAssetAnalysisIds.has(id);
             return (
               <div className="asset-card-stack" key={id}>
                 <article className="card asset-card">
@@ -538,7 +541,7 @@ export default function MaterialPage({
                       </div>
                       <div className="button-row">
                         <button type="button" onClick={() => { onOpenAsset?.(id); selectAsset(asset); }} disabled={disabled}>Detail</button>
-                        <AssetAnalyzeButton disabled={disabled || isAnotherAssetAnalyzing} isAnalyzing={isCurrentAssetAnalyzing} onAnalyze={() => analyzeSelectedAsset(asset)} label="Reanalyze" />
+                        <AssetAnalyzeButton disabled={disabled} isAnalyzing={isCurrentAssetAnalyzing} onAnalyze={() => analyzeSelectedAsset(asset)} label="Reanalyze" />
                         <button type="button" onClick={() => deleteAsset(asset)} disabled={disabled}>Delete</button>
                       </div>
                     </div>

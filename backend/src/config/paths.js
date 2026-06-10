@@ -14,6 +14,7 @@ module.exports = {
   STORYBOARDS_DIR: path.join(DATA_DIR, 'storyboards'),
   TASKS_DIR: path.join(DATA_DIR, 'generation-tasks'),
   ASSET_GENERATION_TASKS_FILE: path.join(DATA_DIR, 'asset-generation-tasks.json'),
+  ASSET_ANALYSIS_TASKS_FILE: path.join(DATA_DIR, 'asset-analysis-tasks.json'),
   COMPLIANCE_REVIEWS_FILE: path.join(DATA_DIR, 'compliance-reviews.json'),
   DISTRIBUTION_EVENTS_FILE: path.join(DATA_DIR, 'distribution-events.json'),
   CONVERSION_EVENTS_FILE: path.join(DATA_DIR, 'conversion-events.json'),
