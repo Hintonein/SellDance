@@ -118,6 +118,10 @@ async function writeTask(id, payload) {
   await writeJsonFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`), payload);
 }
 
+async function deleteTask(id) {
+  await deleteJsonFile(path.join(TASKS_DIR, `${ensureSafeId(id)}.json`));
+}
+
 async function listTasks() {
   await fs.mkdir(TASKS_DIR, { recursive: true });
   const files = await fs.readdir(TASKS_DIR);
@@ -283,6 +287,7 @@ module.exports = {
   deleteStoryboard,
   readTask,
   writeTask,
+  deleteTask,
   listTasks,
   readJsonFile,
   writeJsonFile,

@@ -1,5 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
-const { readTask, listTasks: listTaskRecords, writeTask } = require('./storage.service');
+const fs = require('fs/promises');
+const path = require('path');
+const { OUTPUTS_DIR } = require('../config/paths');
+const { readTask, listTasks: listTaskRecords, writeTask, deleteTask: deleteTaskRecord } = require('./storage.service');
 const { renderProjectVideo, clipsToRenderScenes } = require('./video-render.service');
 const { getAsset, listAssets } = require('./asset.service');
 const { getEditingPlan } = require('./creation-planning.service');
@@ -21,10 +24,17 @@ async function getTask(taskId) {
   return task ? decorateTask(task) : null;
 }
 
-async function listTasks(projectId) {
+const deletableStatuses = new Set(['completed', 'failed', 'canceled', 'cancelled']);
+
+async function listTasks(projectId, options = {}) {
   const tasks = await listTaskRecords();
   return tasks
     .filter((task) => task.projectId === projectId)
+    .filter((task) => {
+      if (options.deletedOnly) return Boolean(task.deletedAt);
+      if (options.includeDeleted) return true;
+      return !task.deletedAt;
+    })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(decorateTask);
 }
@@ -252,6 +262,94 @@ async function cancelTask(taskId) {
   return decorateTask(nextTask);
 }
 
+function assertDeletable(task) {
+  const status = task.rawStatus || task.status;
+  if (!deletableStatuses.has(status)) {
+    const error = new Error('Only completed, failed, or canceled render tasks can be moved to trash.');
+    error.statusCode = 400;
+    error.code = 'TASK_NOT_DELETABLE';
+    throw error;
+  }
+}
+
+async function moveTaskToTrash(projectId, taskId, payload = {}) {
+  const task = await getTask(taskId);
+  if (!task || task.projectId !== projectId) return null;
+  assertDeletable(task);
+  const nextTask = {
+    ...task,
+    deletedAt: task.deletedAt || new Date().toISOString(),
+    deletedBy: 'user',
+    deleteReason: payload.reason || task.deleteReason || '',
+    updatedAt: new Date().toISOString(),
+  };
+  await persistTask(nextTask);
+  return decorateTask(nextTask);
+}
+
+async function restoreTask(projectId, taskId) {
+  const task = await getTask(taskId);
+  if (!task || task.projectId !== projectId) return null;
+  const nextTask = {
+    ...task,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: '',
+    updatedAt: new Date().toISOString(),
+  };
+  await persistTask(nextTask);
+  return decorateTask(nextTask);
+}
+
+function outputRefToDiskPath(ref) {
+  if (!ref || typeof ref !== 'string') return null;
+  const outputRoot = path.resolve(OUTPUTS_DIR);
+  let target = '';
+  if (ref.startsWith('/outputs/')) {
+    target = path.resolve(outputRoot, ref.replace(/^\/outputs\//, ''));
+  } else if (ref.startsWith('outputs/')) {
+    target = path.resolve(outputRoot, ref.replace(/^outputs\//, ''));
+  } else if (path.isAbsolute(ref)) {
+    target = path.resolve(ref);
+  }
+  if (!target) return null;
+  if (target !== outputRoot && target.startsWith(`${outputRoot}${path.sep}`)) return target;
+  return null;
+}
+
+async function deleteOutputFiles(task) {
+  const refs = [
+    task.videoUrl,
+    task.outputVideoUrl,
+    task.exportFile,
+    task.captionUrl,
+    ...(task.exportPresets || []).map((preset) => preset.url),
+  ];
+  const deletedFiles = [];
+  for (const filePath of [...new Set(refs.map(outputRefToDiskPath).filter(Boolean))]) {
+    try {
+      await fs.rm(filePath, { force: true });
+      deletedFiles.push(filePath);
+    } catch {
+      // Best-effort cleanup; task deletion should still proceed.
+    }
+  }
+  return deletedFiles;
+}
+
+async function permanentlyDeleteTask(projectId, taskId) {
+  const task = await getTask(taskId);
+  if (!task || task.projectId !== projectId) return null;
+  assertDeletable(task);
+  const deletedFiles = await deleteOutputFiles(task);
+  await deleteTaskRecord(task.id);
+  return {
+    success: true,
+    deletedId: task.id,
+    deletedFiles,
+  };
+}
+
 function decorateTask(task) {
   const outputVideoUrl = task.outputVideoUrl || task.videoUrl || null;
   const exportPresets = outputVideoUrl
@@ -278,4 +376,7 @@ module.exports = {
   createTask,
   retryTask,
   cancelTask,
+  moveTaskToTrash,
+  restoreTask,
+  permanentlyDeleteTask,
 };

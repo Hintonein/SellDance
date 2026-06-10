@@ -194,6 +194,7 @@ function App() {
   const [scenes, setScenes] = useState([]);
   const [editingPlan, setEditingPlan] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [deletedTasks, setDeletedTasks] = useState([]);
   const [message, setMessage] = useState('');
   const [statusPanelOpen, setStatusPanelOpen] = useState(false);
   const [dismissedRenderTaskIds, setDismissedRenderTaskIds] = useState([]);
@@ -272,6 +273,7 @@ function App() {
     setScenes([]);
     setEditingPlan(null);
     setTasks([]);
+    setDeletedTasks([]);
     setInspirationVideos([]);
     setInspirationTemplates([]);
     setCrawlerTask(null);
@@ -341,6 +343,7 @@ function App() {
       scriptData,
       storyboardData,
       taskData,
+      deletedTaskData,
       inspirationVideoData,
       inspirationTemplateData,
       crawlerTaskData,
@@ -354,6 +357,7 @@ function App() {
       api.getScript(projectId),
       api.getStoryboard(projectId),
       api.listTasks(projectId),
+      api.listDeletedTasks(projectId),
       api.listInspirationVideos(projectId),
       api.listInspirationTemplates(projectId),
       api.listCrawlerTasks(projectId),
@@ -370,6 +374,7 @@ function App() {
       scriptData,
       storyboardData,
       taskData,
+      deletedTaskData,
       inspirationVideoData,
       inspirationTemplateData,
       crawlerTaskData,
@@ -391,6 +396,7 @@ function App() {
     setScenes(storyboardData.scenes || []);
     setEditingPlan(null);
     setTasks(data.taskData || []);
+    setDeletedTasks(data.deletedTaskData || []);
     setInspirationVideos(data.inspirationVideoData || []);
     setInspirationTemplates(data.inspirationTemplateData || []);
     setCrawlerTask(data.crawlerTaskData?.[0] || null);
@@ -1250,7 +1256,7 @@ function App() {
               onBack={() => navigate(projectPath(selectedProjectId, 'history'))}
               onRetry={(taskId) =>
                 withToast(async () => {
-                  await api.retryTask(taskId);
+                  await api.retryTask(selectedProjectId, taskId);
                   setTasks(await api.listTasks(selectedProjectId));
                 }, 'Task retried.')
               }
@@ -1259,13 +1265,42 @@ function App() {
             <HistoryPage
               disabled={disabled}
               tasks={tasks}
+              deletedTasks={deletedTasks}
               resolveMediaUrl={resolveMediaUrl}
               onOpenTask={(taskId) => navigate(projectPath(selectedProjectId, 'history', taskId))}
               onRetry={(taskId) =>
                 withToast(async () => {
-                  await api.retryTask(taskId);
+                  await api.retryTask(selectedProjectId, taskId);
                   setTasks(await api.listTasks(selectedProjectId));
                 }, 'Task retried.')
+              }
+              onDeleteTask={(taskId) =>
+                withToast(async () => {
+                  await api.deleteTask(selectedProjectId, taskId);
+                  const [nextTasks, nextDeletedTasks] = await Promise.all([
+                    api.listTasks(selectedProjectId),
+                    api.listDeletedTasks(selectedProjectId),
+                  ]);
+                  setTasks(nextTasks);
+                  setDeletedTasks(nextDeletedTasks);
+                }, 'Task moved to trash.')
+              }
+              onRestoreTask={(taskId) =>
+                withToast(async () => {
+                  await api.restoreTask(selectedProjectId, taskId);
+                  const [nextTasks, nextDeletedTasks] = await Promise.all([
+                    api.listTasks(selectedProjectId),
+                    api.listDeletedTasks(selectedProjectId),
+                  ]);
+                  setTasks(nextTasks);
+                  setDeletedTasks(nextDeletedTasks);
+                }, 'Task restored.')
+              }
+              onDeleteTaskPermanent={(taskId) =>
+                withToast(async () => {
+                  await api.deleteTaskPermanent(selectedProjectId, taskId);
+                  setDeletedTasks(await api.listDeletedTasks(selectedProjectId));
+                }, 'Task permanently deleted.')
               }
             />
           )
